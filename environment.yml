@@ -1,0 +1,16 @@
+name: nmrmetabowizard
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.10
+  - numpy
+  - pandas
+  - scipy
+  - matplotlib
+  - scikit-learn
+  - openpyxl
+  - plotly
+  - pip
+  - pip:
+      - shiny
+      - shinywidgets

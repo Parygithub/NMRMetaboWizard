@@ -1,0 +1,37 @@
+cff-version: 1.2.0
+message: "If you use NMRMetaboWizard, please cite the software and the associated manuscript."
+title: "NMRMetaboWizard"
+type: software
+version: "0.1.0"
+date-released: "2026-07-16"
+license: MIT
+repository-code: "https://github.com/Parygithub/NMRMetaboWizard"
+url: "https://nmrmetabowizard.readthedocs.io"
+authors:
+  - family-names: Vahdatiyekta
+    given-names: Parastoo
+    affiliation: "Chemistry and Chemical Technology, Faculty of Science and Engineering, Åbo Akademi University"
+    orcid: "https://orcid.org/REPLACE_WITH_ORCID"
+  - family-names: Huynh
+    given-names: Tan-Phat
+    affiliation: "Chemistry and Chemical Technology, Faculty of Science and Engineering, Åbo Akademi University"
+    orcid: "https://orcid.org/REPLACE_WITH_ORCID"
+keywords:
+  - NMR metabolomics
+  - urine metabolomics
+  - Shiny for Python
+  - Bruker
+  - PCA
+  - PLS-DA
+  - machine learning
+preferred-citation:
+  type: article
+  title: "NMRMetaboWizard: A Dynamic Shiny Platform for 1H-NMR Untargeted Metabolomics with Application to Prostate Cancer and Benign Prostatic Hyperplasia"
+  authors:
+    - family-names: Vahdatiyekta
+      given-names: Parastoo
+    - family-names: Huynh
+      given-names: Tan-Phat
+  journal: "REPLACE_WITH_JOURNAL"
+  year: 2026
+  doi: "REPLACE_WITH_DOI"

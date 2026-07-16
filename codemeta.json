@@ -1,0 +1,54 @@
+{
+  "@context": "https://doi.org/10.5063/schema/codemeta-2.0",
+  "@type": "SoftwareSourceCode",
+  "name": "NMRMetaboWizard",
+  "description": "Interactive Shiny for Python application for stepwise preprocessing, clinical metadata integration, EDA, outlier screening, and machine learning of one-dimensional Bruker 1H NMR metabolomics data.",
+  "version": "0.1.0",
+  "dateCreated": "2026-07-16",
+  "dateModified": "2026-07-16",
+  "programmingLanguage": "Python",
+  "runtimePlatform": "Python >=3.10",
+  "license": "https://spdx.org/licenses/MIT",
+  "codeRepository": "https://github.com/YOUR_GITHUB_USERNAME/NMRMetaboWizard",
+  "issueTracker": "https://github.com/YOUR_GITHUB_USERNAME/NMRMetaboWizard/issues",
+  "author": [
+    {
+      "@type": "Person",
+      "givenName": "Parastoo",
+      "familyName": "Vahdatiyekta",
+      "affiliation": {
+        "@type": "Organization",
+        "name": "Åbo Akademi University"
+      }
+    },
+    {
+      "@type": "Person",
+      "givenName": "Tan-Phat",
+      "familyName": "Huynh",
+      "affiliation": {
+        "@type": "Organization",
+        "name": "Åbo Akademi University"
+      }
+    }
+  ],
+  "keywords": [
+    "NMR metabolomics",
+    "Bruker FID",
+    "urine metabolomics",
+    "Shiny for Python",
+    "PCA",
+    "PLS-DA",
+    "machine learning"
+  ],
+  "softwareRequirements": [
+    "shiny",
+    "numpy",
+    "pandas",
+    "scipy",
+    "matplotlib",
+    "scikit-learn",
+    "openpyxl",
+    "plotly",
+    "shinywidgets"
+  ]
+}

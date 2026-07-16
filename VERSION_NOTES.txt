@@ -1,0 +1,78 @@
+NMRMetaboWizard - requested UI/analysis update
+
+Copy these files into:
+C:\Users\vparasto\Documents\nmr-shiny-app
+
+Files:
+- app.py
+- nmr_pipeline.py
+- clinical_analysis.py
+- requirements.txt
+
+Run:
+cd /d C:\Users\vparasto\Documents\nmr-shiny-app
+.venv\Scripts\activate.bat
+python -m pip install -r requirements.txt
+python -m shiny run --reload --launch-browser app.py
+
+Changes in this version:
+1. App name changed to NMRMetaboWizard.
+2. Added a title banner background with an NMR/spectrum-style graphic.
+3. Upload step now warns that detected sample/folder names are used later as study_id values and must match the clinical metadata.
+4. Clinical upload step now explicitly states that clinical metadata should contain study_id and Class columns.
+5. Before/after traces now have consistent colors even when shown as a single plot:
+   before/raw = blue, after/corrected = red, auxiliary estimates = orange.
+6. Added CSV downloads for current preprocessing plot data, current EDA plot data, post-outlier EDA plot data, outlier table, and current ML plot data.
+7. Added processing-time notes to heavier steps.
+8. Binning plot now shows faint bin/bucket intervals on the spectrum.
+9. EDA plot height was reduced to a more square shape.
+10. EDA note clarifies that score coloring uses variables from the aligned clinical metadata.
+11. Added ANN model with user controls for hidden layers, activation, L2 alpha, learning rate, max iterations, and early stopping.
+12. ML PCA reduction is now unchecked by default; the user decides whether to enable it.
+
+Notes:
+- Fourier transform is still required to convert FID data into spectra.
+- Exported plot CSVs contain the data used to generate the current selected plot/step.
+- Binning still supports bin width or number of bins, and trapezoidal or rectangular integration.
+
+
+Fix update:
+- Binning and normalization plots no longer draw integrated binned values as a line.
+- They now show only the processed spectrum with bin intervals overlaid.
+- Integrated bin values remain available in the binned CSV/table, not as a plot trace.
+- Clinical Class labels are now robust to Excel/pandas reading occasional values as non-string/float values.
+
+Outlier legend fix:
+- In the outlier-by-cohort plot, the legend now shows kept/flagged traces for every cohort, not only the first cohort.
+
+
+Update: plot appearance, optional CV and ML history
+
+This version adds:
+- Global Plot appearance controls for font family, title size, axis-label size, tick-number size, legend size, plot width and plot height.
+- Plot width/height controls can be used to make plots more square instead of wide.
+- These controls apply to Plotly-based preprocessing, EDA, outlier and ML plots.
+- ML now reports train accuracy and train balanced accuracy for the holdout split.
+- ML now has a "Use cross-validation" checkbox, so users can run train/test without CV.
+- Every ML run is recorded in a model-performance history table.
+- The model-performance history can be downloaded as CSV.
+
+
+Quality-fix update:
+- Outlier section now keeps only the cohort/class-based outlier plot to avoid duplicate outlier plots.
+- Cohort subplot titles, labels, ticks and legend now follow the global plot appearance controls.
+- Feature-importance plotting now gives a clear message if importance is unavailable/zero.
+- ANN feature importance now uses a simple first-layer-weight heuristic instead of returning a blank zero plot.
+
+PCA loading plot update:
+- Added “PCA loadings” as an EDA and post-outlier EDA plot option.
+- The selected X component number controls which loading vector is displayed, e.g. X component = 1 shows PC1 loadings.
+- The loading plot uses ppm/bin on the x-axis and loading value on the y-axis.
+- PCA loading data are available through the current EDA plot-data CSV export.
+
+
+Proper PCA loading bar-plot update:
+- PCA loadings are now true Plotly bar plots.
+- Numeric ppm x-axis shows integer ticks at 0, 1, 2, ... instead of sparse 0, 2, 4 labels.
+- Users can select a starting PC and how many loading PCs to show together.
+- Post-outlier EDA has the same loading-PC controls.

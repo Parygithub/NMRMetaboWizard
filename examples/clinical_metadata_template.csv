@@ -1,0 +1,5 @@
+study_id,Class,age,psa,height,weight
+synthetic_001,PCa,68,7.4,176,81
+synthetic_002,BPH,64,5.9,171,77
+synthetic_003,PCa,72,11.2,180,86
+synthetic_004,BPH,61,3.7,168,72

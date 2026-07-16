@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Build
+docs/build/
+_build/
+dist/
+build/
+*.egg-info/
+
+# Secrets
+.env
+*.pem
+*.key
+credentials*
+secrets*
+
+# Real or potentially confidential data
+*.zip
+*.xlsx
+*.xls
+*.csv
+*.tsv
+*.txt
+*.fid
+fid
+ser
+acqus
+pdata/
+data/
+results/
+private/
+clinical*/
+
+# Permit repository-controlled templates and documentation
+!requirements.txt
+!VERSION_NOTES.txt
+!examples/
+!examples/**
+!journal/
+!journal/**
+!docs/
+!docs/**
