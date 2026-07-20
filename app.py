@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import traceback
 import re
+import io
+import zipfile
 
 import numpy as np
 import pandas as pd
@@ -47,6 +49,233 @@ from clinical_analysis import (
     train_ml_model,
     metrics_to_text,
 )
+
+
+DEMO_RANDOM_SEED = 20260717
+DEMO_SW_H = 7200.0
+DEMO_O1 = 2820.0
+DEMO_SFO1 = 600.13
+DEMO_N_POINTS = 4096
+
+
+def _demo_sample_rows() -> list[dict]:
+    """Create deterministic, fully synthetic clinical metadata."""
+    rng = np.random.default_rng(DEMO_RANDOM_SEED)
+    rows = []
+
+    for class_label in ["BPH", "PCa"]:
+        for index in range(1, 9):
+            sample_id = f"demo_{class_label}_{index:02d}"
+
+            if class_label == "BPH":
+                age = int(rng.integers(55, 79))
+                psa = float(np.clip(rng.normal(5.1, 1.5), 1.0, 10.0))
+                trus = float(np.clip(rng.normal(58.0, 12.0), 25.0, 100.0))
+            else:
+                age = int(rng.integers(57, 81))
+                psa = float(np.clip(rng.normal(7.8, 2.0), 2.5, 15.0))
+                trus = float(np.clip(rng.normal(42.0, 10.0), 20.0, 85.0))
+
+            rows.append(
+                {
+                    "study_id": sample_id,
+                    "Class": class_label,
+                    "age": age,
+                    "psa": round(psa, 2),
+                    "height": int(rng.integers(165, 188)),
+                    "weight": int(rng.integers(65, 101)),
+                    "krea": int(rng.integers(65, 111)),
+                    "trus_volume_v2": round(trus, 1),
+                }
+            )
+
+    return rows
+
+
+def _demo_fid_bytes(class_label: str, sample_index: int) -> bytes:
+    """Generate one deterministic but visibly distinct synthetic complex FID.
+
+    Each sample receives its own dilution factor, peak amplitudes, small
+    chemical-shift offsets, linewidths, phases, water residual, and noise.
+    The generated data are for software demonstration only.
+    """
+    seed_offset = 0 if class_label == "BPH" else 1000
+    rng = np.random.default_rng(
+        DEMO_RANDOM_SEED + seed_offset + int(sample_index)
+    )
+
+    time_s = np.arange(DEMO_N_POINTS, dtype=float) / DEMO_SW_H
+
+    peak_ppm = np.array(
+        [0.00, 0.92, 1.31, 1.65, 2.06, 2.36, 2.75, 3.03,
+         3.22, 3.56, 4.12, 6.65, 7.15, 8.05],
+        dtype=float,
+    )
+    base_amplitudes = np.array(
+        [0.25, 0.55, 0.70, 0.12, 0.42, 0.32, 0.10, 0.58,
+         0.48, 0.37, 0.26, 0.08, 0.14, 0.10],
+        dtype=float,
+    )
+    base_linewidth_hz = np.array(
+        [1.2, 2.0, 2.5, 2.8, 2.2, 2.0, 3.0, 2.4,
+         2.1, 2.6, 2.0, 3.2, 3.0, 3.5],
+        dtype=float,
+    )
+
+    # Distributed class effects create a useful but non-trivial example.
+    if class_label == "PCa":
+        class_effect = np.array(
+            [1.00, 1.22, 0.78, 1.35, 1.28, 1.12, 1.30,
+             0.76, 1.24, 0.88, 1.18, 1.25, 1.18, 0.82]
+        )
+    else:
+        class_effect = np.array(
+            [1.00, 0.82, 1.22, 0.72, 0.78, 0.94, 0.75,
+             1.24, 0.80, 1.16, 0.86, 0.78, 0.84, 1.18]
+        )
+
+    dilution_factor = rng.uniform(0.65, 1.45)
+    peak_variation = rng.lognormal(mean=0.0, sigma=0.22, size=peak_ppm.size)
+    amplitudes = (
+        base_amplitudes
+        * class_effect
+        * peak_variation
+        * dilution_factor
+    )
+
+    # Make the optional variability peaks differ markedly among samples.
+    amplitudes[[3, 6, 11]] *= rng.uniform(0.15, 2.8, size=3)
+
+    global_shift_ppm = rng.normal(0.0, 0.006)
+    local_shift_ppm = rng.normal(0.0, 0.004, size=peak_ppm.size)
+    shifted_ppm = peak_ppm + global_shift_ppm + local_shift_ppm
+
+    linewidth_hz = (
+        base_linewidth_hz
+        * rng.uniform(0.75, 1.45, size=peak_ppm.size)
+    )
+    zero_order_phase = rng.normal(0.0, 0.12)
+
+    fid = np.zeros(DEMO_N_POINTS, dtype=np.complex128)
+
+    for ppm_value, amplitude, linewidth in zip(
+        shifted_ppm, amplitudes, linewidth_hz
+    ):
+        frequency_hz = ppm_value * DEMO_SFO1 - DEMO_O1
+        peak_phase = zero_order_phase + rng.normal(0.0, 0.04)
+        fid += (
+            amplitude
+            * np.exp(-np.pi * linewidth * time_s)
+            * np.exp(
+                1j
+                * (
+                    2.0 * np.pi * frequency_hz * time_s
+                    + peak_phase
+                )
+            )
+        )
+
+    # Variable broad water-like residual near 4.75 ppm.
+    water_ppm = 4.75 + rng.normal(0.0, 0.025)
+    water_frequency_hz = water_ppm * DEMO_SFO1 - DEMO_O1
+    water_amplitude = rng.uniform(0.45, 2.20)
+    water_linewidth = rng.uniform(8.0, 20.0)
+    fid += (
+        water_amplitude
+        * np.exp(-np.pi * water_linewidth * time_s)
+        * np.exp(
+            1j
+            * (
+                2.0 * np.pi * water_frequency_hz * time_s
+                + rng.normal(0.0, 0.10)
+            )
+        )
+    )
+
+    # A broad low-frequency component gives sample-specific early-FID shape.
+    broad_frequency_hz = rng.uniform(-450.0, 450.0)
+    fid += (
+        rng.uniform(0.04, 0.18)
+        * np.exp(-np.pi * rng.uniform(18.0, 45.0) * time_s)
+        * np.exp(
+            1j
+            * (
+                2.0 * np.pi * broad_frequency_hz * time_s
+                + rng.uniform(-np.pi, np.pi)
+            )
+        )
+    )
+
+    noise_sd = rng.uniform(0.004, 0.014)
+    fid += noise_sd * (
+        rng.normal(size=DEMO_N_POINTS)
+        + 1j * rng.normal(size=DEMO_N_POINTS)
+    )
+
+    integer_scale = 2.5e7 / max(
+        float(np.max(np.abs(fid.real))),
+        float(np.max(np.abs(fid.imag))),
+        1e-12,
+    )
+    real = np.rint(fid.real * integer_scale).astype("<i4")
+    imag = np.rint(fid.imag * integer_scale).astype("<i4")
+
+    interleaved = np.empty(real.size * 2, dtype="<i4")
+    interleaved[0::2] = real
+    interleaved[1::2] = imag
+    return interleaved.tobytes()
+
+
+def _demo_acqus_text(sample_id: str) -> str:
+    """Return the minimal Bruker acquisition parameters used by the importer."""
+    return (
+        f"##TITLE= NMRMetaboWizard synthetic demonstration {sample_id}\n"
+        "##JCAMPDX= 5.00 Bruker JCAMP library\n"
+        "##DATATYPE= NMR FID\n"
+        "##ORIGIN= NMRMetaboWizard synthetic demonstration\n"
+        "##OWNER= Public synthetic example\n"
+        "##$BYTORDA= 0\n"
+        "##$DTYPA= 0\n"
+        f"##$TD= {DEMO_N_POINTS * 2}\n"
+        f"##$SW_h= {DEMO_SW_H}\n"
+        f"##$O1= {DEMO_O1}\n"
+        f"##$SFO1= {DEMO_SFO1}\n"
+        "##$GRPDLY= 0\n"
+        "##END=\n"
+    )
+
+
+def _build_demo_nmr_zip() -> bytes:
+    """Build the complete synthetic Bruker cohort directly in memory."""
+    buffer = io.BytesIO()
+
+    with zipfile.ZipFile(
+        buffer,
+        mode="w",
+        compression=zipfile.ZIP_DEFLATED,
+    ) as archive:
+        for row in _demo_sample_rows():
+            sample_id = str(row["study_id"])
+            class_label = str(row["Class"])
+            sample_index = int(sample_id.rsplit("_", 1)[-1])
+            experiment_root = f"{sample_id}/1"
+
+            archive.writestr(
+                f"{experiment_root}/fid",
+                _demo_fid_bytes(class_label, sample_index),
+            )
+            archive.writestr(
+                f"{experiment_root}/acqus",
+                _demo_acqus_text(sample_id),
+            )
+
+    return buffer.getvalue()
+
+
+def _build_demo_clinical_csv() -> bytes:
+    """Build matching synthetic clinical metadata directly in memory."""
+    table = pd.DataFrame(_demo_sample_rows())
+    return table.to_csv(index=False).encode("utf-8")
 
 
 STEPS = [
@@ -1019,6 +1248,33 @@ def server(input, output, session):
                     class_="note",
                 ),
                 ui.div(
+                    ui.h4("Try NMRMetaboWizard with synthetic example data"),
+                    ui.p(
+                        "Download both files below. The NMR archive contains 16 "
+                        "fully synthetic Bruker-like FIDs (8 BPH-labelled and "
+                        "8 PCa-labelled samples), and the CSV contains matching "
+                        "study_id and Class values. The files contain no patient data."
+                    ),
+                    ui.layout_columns(
+                        ui.download_button(
+                            "download_example_nmr",
+                            "Download example NMR ZIP",
+                        ),
+                        ui.download_button(
+                            "download_example_clinical",
+                            "Download example clinical CSV",
+                        ),
+                        col_widths=[6, 6],
+                    ),
+                    ui.p(
+                        "Upload the NMR ZIP here. At Step 17, upload the matching "
+                        "clinical CSV and keep study_id as the ID column and Class "
+                        "as the class column.",
+                        style="margin-top:10px; margin-bottom:0;",
+                    ),
+                    class_="good-note",
+                ),
+                ui.div(
                     "Processing note: reading many raw NMR folders can take a little while.",
                     class_="note",
                 ),
@@ -1335,6 +1591,15 @@ def server(input, output, session):
                     "The study_id values must match the sample/folder names detected during upload. "
                     "Clinical data are used for sample labels/classes, PCA/PLS-DA coloring, clinical correlations, and ML targets. By default, ML features are NMR bins only.",
                     class_="note",
+                ),
+                ui.div(
+                    ui.strong("Using the synthetic example NMR cohort? "),
+                    "Download its matching clinical labels here: ",
+                    ui.download_button(
+                        "download_example_clinical_step",
+                        "Download example clinical CSV",
+                    ),
+                    class_="good-note",
                 ),
                 ui.input_file("clinical_file", "Clinical CSV/TSV/TXT/Excel file", accept=[".csv", ".tsv", ".txt", ".xlsx", ".xls"], multiple=False),
                 ui.layout_columns(
@@ -2579,6 +2844,31 @@ def server(input, output, session):
             status_state.set("ML finished.")
         except Exception:
             set_error()
+
+    # Public synthetic example downloads.
+    # Files are generated in memory so downloads work on local installations
+    # and hosted deployments without relying on separately packaged files.
+
+    @render.download(
+        filename="NMRMetaboWizard_demo_cohort_bruker.zip",
+        media_type="application/zip",
+    )
+    def download_example_nmr():
+        yield _build_demo_nmr_zip()
+
+    @render.download(
+        filename="NMRMetaboWizard_demo_clinical_metadata.csv",
+        media_type="text/csv",
+    )
+    def download_example_clinical():
+        yield _build_demo_clinical_csv()
+
+    @render.download(
+        filename="NMRMetaboWizard_demo_clinical_metadata.csv",
+        media_type="text/csv",
+    )
+    def download_example_clinical_step():
+        yield _build_demo_clinical_csv()
 
     # Outputs
 
