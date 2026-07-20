@@ -31,7 +31,7 @@ from sklearn.svm import LinearSVC
 def read_clinical_file(path: str | Path) -> pd.DataFrame:
     path = Path(path)
 
-    if path.suffix.lower() in [".xlsx", ".xls"]:
+    if path.suffix.lower() == ".xlsx":
         df = pd.read_excel(path)
     else:
         df = pd.read_csv(path, sep=None, engine="python")
