@@ -13,3 +13,5 @@ assignees: ""
 **Relevant processing/analysis step**
 
 **Possible validation approach**
+
+**Would this change alter scientific results or existing defaults?**
