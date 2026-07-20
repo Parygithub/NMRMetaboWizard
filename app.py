@@ -1601,7 +1601,7 @@ def server(input, output, session):
                     ),
                     class_="good-note",
                 ),
-                ui.input_file("clinical_file", "Clinical CSV/TSV/TXT/Excel file", accept=[".csv", ".tsv", ".txt", ".xlsx", ".xls"], multiple=False),
+                ui.input_file("clinical_file", "Clinical CSV/TSV/TXT/Excel file", accept=[".csv", ".tsv", ".txt", ".xlsx"], multiple=False),
                 ui.layout_columns(
                     ui.input_text("clinical_id_col", "Sample ID column", value="study_id"),
                     ui.input_text("clinical_class_col", "Class column", value="Class"),
