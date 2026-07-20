@@ -23,3 +23,8 @@ assignees: ""
 **Synthetic or non-confidential reproduction details**
 
 Do not attach identifiable clinical data.
+
+**NMRMetaboWizard deployment**
+
+- [ ] Local installation
+- [ ] Posit Connect Cloud
