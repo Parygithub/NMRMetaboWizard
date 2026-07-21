@@ -29,5 +29,4 @@ preprocessing and analysis of one-dimensional Bruker 1H NMR metabolomics data.
    troubleshooting
    privacy
    citation
-   release_archiving
-   journal_compliance
+
