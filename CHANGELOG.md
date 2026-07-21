@@ -1,10 +1,11 @@
 # Changelog
 
-All notable changes should be recorded here.
+All notable changes to NMRMetaboWizard are documented here.
 
 ## [Unreleased]
 
-- Documentation and repository preparation for journal submission.
+- Added downloadable synthetic demonstration NMR and clinical data.
+- Added validation of demonstration-file counts, unique FID hashes, and matching sample IDs.
 - Added PCA loading bar plots for multiple principal components.
 - Added global plot appearance controls.
 - Added optional cross-validation and model-performance history.
@@ -13,4 +14,4 @@ All notable changes should be recorded here.
 
 ## [0.1.0] - 2026-07-16
 
-Initial research-software release candidate.
+- Initial public research-software release.
