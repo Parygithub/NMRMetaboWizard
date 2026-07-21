@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Security and privacy fixes are applied to the latest tagged release.
+Security and privacy fixes are applied to the current main branch and will be included in future tagged releases.
 
 ## Reporting
 
