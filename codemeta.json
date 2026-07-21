@@ -10,7 +10,7 @@
   "runtimePlatform": "Python >=3.10",
   "license": "https://spdx.org/licenses/MIT",
   "codeRepository": "https://github.com/Parygithub/NMRMetaboWizard",
-  "issueTracker": "https://github.com/Parygithub/NMRMetaboWizard/issues"
+  "issueTracker": "https://github.com/Parygithub/NMRMetaboWizard/issues",
   "author": [
     {
       "@type": "Person",
