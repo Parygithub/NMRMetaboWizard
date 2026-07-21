@@ -5,7 +5,7 @@ Thank you for considering a contribution.
 ## Before opening an issue
 
 1. Search existing issues.
-2. Confirm that the latest tagged release is being used.
+2. Confirm that the latest version of the main branch is being used.
 3. Remove all patient identifiers and confidential data.
 4. Include the operating system, Python version, and error traceback.
 5. Describe the smallest reproducible example.
@@ -17,6 +17,7 @@ python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 python -m pip install -r requirements.txt
 python tests/smoke_test.py
+python tests/test_demo_data.py
 ```
 
 ## Pull requests
