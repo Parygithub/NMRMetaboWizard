@@ -4,22 +4,24 @@ Citation and license
 Citation
 --------
 
-The repository contains ``CITATION.cff`` and ``CITATION.bib``.
+Citation metadata are available in ``CITATION.cff`` and ``CITATION.bib``.
 
-Repository link::
+Source code
+-----------
 
-   https://github.com/Parygithub/NMRMetaboWizard
+`GitHub repository <https://github.com/Parygithub/NMRMetaboWizard>`_
 
-Documentation link::
+User documentation
+------------------
 
-   https://nmrmetabowizard.readthedocs.io
+`NMRMetaboWizard documentation <https://nmrmetabowizard.readthedocs.io/>`_
 
-Archived release DOI::
+Public web application
+----------------------
 
-   https://doi.org/10.5281/zenodo.REPLACE_WITH_RECORD
+`Launch NMRMetaboWizard <https://parygithub-nmrmetabowizard.share.connect.posit.cloud/>`_
 
 License
 -------
 
-A proposed MIT License is included. Confirm the license with the institution
-before the repository is made public.
+NMRMetaboWizard is distributed under the MIT License.
