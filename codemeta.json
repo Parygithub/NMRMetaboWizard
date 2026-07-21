@@ -5,12 +5,12 @@
   "description": "Interactive Shiny for Python application for stepwise preprocessing, clinical metadata integration, EDA, outlier screening, and machine learning of one-dimensional Bruker 1H NMR metabolomics data.",
   "version": "0.1.0",
   "dateCreated": "2026-07-16",
-  "dateModified": "2026-07-16",
+  "dateModified": "2026-07-21",
   "programmingLanguage": "Python",
   "runtimePlatform": "Python >=3.10",
   "license": "https://spdx.org/licenses/MIT",
-  "codeRepository": "https://github.com/YOUR_GITHUB_USERNAME/NMRMetaboWizard",
-  "issueTracker": "https://github.com/YOUR_GITHUB_USERNAME/NMRMetaboWizard/issues",
+  "codeRepository": "https://github.com/Parygithub/NMRMetaboWizard",
+  "issueTracker": "https://github.com/Parygithub/NMRMetaboWizard/issues"
   "author": [
     {
       "@type": "Person",
