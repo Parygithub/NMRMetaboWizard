@@ -8,8 +8,9 @@ Quick start
 3. Remove dummy acquisition folders such as ``99999``.
 4. Start the app and upload the ZIP.
 
-*Try the synthetic example
+Try the synthetic example
 -------------------------
+
 At Step 1, the application provides two downloadable demonstration files:
 
 - a ZIP archive containing 16 fully synthetic Bruker-like FIDs;
@@ -19,7 +20,12 @@ At Step 1, the application provides two downloadable demonstration files:
 Download both files from the application. Upload the NMR ZIP at Step 1, then
 upload the matching clinical CSV at Step 17.
 
--------------------------
+Use ``study_id`` as the sample ID column and ``Class`` as the class column.
+
+The demonstration data contain no patient data and are intended only for
+testing the software workflow. They must not be used for biological or
+clinical interpretation.
+
 5. Inspect the raw FIDs and apply or skip each preprocessing step.
 6. Create the binned table and apply normalization.
 7. Upload a clinical file containing ``study_id`` and ``Class``.
