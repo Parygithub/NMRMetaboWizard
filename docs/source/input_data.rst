@@ -27,7 +27,7 @@ Accepted formats:
 - TSV
 - TXT
 - XLSX
-- XLS
+
 
 Required columns:
 
