@@ -18,6 +18,7 @@ At Step 1, the application provides two downloadable demonstration files:
 
 Download both files from the application. Upload the NMR ZIP at Step 1, then
 upload the matching clinical CSV at Step 17.
+
 -------------------------
 5. Inspect the raw FIDs and apply or skip each preprocessing step.
 6. Create the binned table and apply normalization.
