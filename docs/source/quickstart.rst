@@ -20,7 +20,6 @@ Download both files from the application. Upload the NMR ZIP at Step 1, then
 upload the matching clinical CSV at Step 17.
 
 -------------------------
-
 5. Inspect the raw FIDs and apply or skip each preprocessing step.
 6. Create the binned table and apply normalization.
 7. Upload a clinical file containing ``study_id`` and ``Class``.
