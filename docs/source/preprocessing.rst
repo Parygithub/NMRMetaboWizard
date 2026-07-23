@@ -65,9 +65,8 @@ by ``GRPDLY`` or by a user override.
 
 Solvent residual suppression
 -----------------------------
-
-A smooth component is estimated separately from the real and imaginary FID
-parts using penalized second differences and subtracted from the FID.
+Solvent residual removal suppresses the intense residual solvent signal (usually water) in the NMR spectrum to improve visualization and analysis of weaker analyte peaks.
+λ is used as the smoothing or roughness penalty parameter used in Whittaker-based solvent residual estimation: the higher λ is, the smoother the estimated solvent signal becomes. 
 
 Apodization and zero filling
 ----------------------------
@@ -78,15 +77,12 @@ Zero filling appends complex zeros to the FID before Fourier transformation, inc
 Fourier transformation and ppm axis
 -----------------------------------
 
-The app uses ``fft`` and ``fftshift``. The ppm axis is calculated from
-``SW_h``, ``O1``, and ``SFO1``.
+The time-domain FID is converted into a frequency-domain spectrum using ``fft``,while ``fftshift``reorders the frequency components around the spectral center. The chemical-shift axis is then calculated in parts per million (ppm) from the spectral width (``SW_h``). transmitter offset (``O1``), and observation frequency (``SFO1``), allowing peak positions to be reported independently of the magnetic-field strength.
 
 Phasing, referencing, and baseline
 ----------------------------------
 
-Automatic phasing estimates a separate zero-order phase for each spectrum.
-Referencing searches for the largest peak in the selected interval. Baseline
-methods include ALS, arPLS, and airPLS.
+Automatic phasing estimates and applies an independent zero-order phase correction to each spectrum, improving absorptive peak shapes and reducing dispersive distortions. Chemical-shift referencing identifies the largest peak within a selected interval and aligns it with the specified reference position. Baseline correction removes slowly varying background distortions using asymmetric least squares (ALS), asymmetrically reweighted penalized least squares (arPLS), or adaptive iteratively reweighted penalized least squares (airPLS), thereby improving peak visualization and quantification.
 
 Alignment limitation
 --------------------
@@ -95,9 +91,17 @@ The current alignment method searches integer point shifts that maximize
 correlation with a selected reference spectrum within one ppm window. It is
 not a full interval-correlation-shifting implementation.
 
+Negative-value zeroing 
+--------------------
+
+Negative intensities may remain after phasing and baseline correction, particularly in noisy or low-signal regions. Setting negative values to zero produces a non-negative dataset that is better suited to integration, normalization, and multivariate modelling. By default, the app replaces all negative values with zero, although users may change this setting.
+
+Spectral window selection
+-------------------------
+
+Limiting the analysis to a relevant ppm range removes unused portions of the spectrum and ensures that all samples are processed over the same domain. This reduces the size of the resulting dataset and prevents regions with little analytical value from contributing to subsequent region exclusion, binning, normalization, and statistical modelling. The lower and upper limits are entered in the 'Window min ppm' and 'Window max ppm' fields, and the retained region is displayed for visual inspection.
+
 Binning and normalization
 -------------------------
 
-The integrated matrix has samples as rows and ppm-bin centers as columns.
-PQN uses the median spectrum as the reference. The plotted bin rectangles are
-visual guides; integrated values are stored in the downloadable matrix.
+Binning divides each NMR spectrum into defined chemical-shift intervals and integrates the signal intensity within each interval, reducing data dimensionality and minimizing the effects of small peak shifts. The resulting data matrix contains samples as rows and ppm-bin centers as columns. Probabilistic quotient normalization (PQN) uses the median spectrum as a reference to estimate and correct for sample-dilution differences. The rectangles displayed on the spectrum indicate the selected bin regions, while the corresponding integrated values are stored in the downloadable matrix.
