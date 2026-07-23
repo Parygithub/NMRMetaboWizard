@@ -77,7 +77,7 @@ Zero filling appends complex zeros to the FID before Fourier transformation, inc
 Fourier transformation and ppm axis
 -----------------------------------
 
-The time-domain FID is converted into a frequency-domain spectrum using ``fft``,while ``fftshift`` reorders the frequency components around the spectral center. The chemical-shift axis is then calculated in parts per million (ppm) from the spectral width (``SW_h``). transmitter offset (``O1``), and observation frequency (``SFO1``), allowing peak positions to be reported independently of the magnetic-field strength.
+The time-domain FID is converted into a frequency-domain spectrum using ``fft``, while ``fftshift`` reorders the frequency components around the spectral center. The chemical-shift axis is then calculated in parts per million (ppm) from the spectral width (``SW_h``). transmitter offset (``O1``), and observation frequency (``SFO1``), allowing peak positions to be reported independently of the magnetic-field strength.
 
 Phasing, referencing, and baseline
 ----------------------------------
@@ -100,6 +100,12 @@ Spectral window selection
 -------------------------
 
 Limiting the analysis to a relevant ppm range removes unused portions of the spectrum and ensures that all samples are processed over the same domain. This reduces the size of the resulting dataset and prevents regions with little analytical value from contributing to subsequent region exclusion, binning, normalization, and statistical modelling. The lower and upper limits are entered in the 'Window min ppm' and 'Window max ppm' fields, and the retained region is displayed for visual inspection.
+
+Region removal
+-------------------------
+
+This step removes an internal ppm interval that should not contribute to later analysis. For urine samples, the 4.5–6.1 ppm range is excluded to reduce the influence of intense water- and urea-associated signals in the spectra.
+Two processing options are available. The zero option replaces all values inside the specified interval with zero, whereas interpolate reconstructs the interval from the signal values at its boundaries. The first option retains an explicitly empty region, while the second provides a continuous spectral profile. 
 
 Binning and normalization
 -------------------------
