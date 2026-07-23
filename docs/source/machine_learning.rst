@@ -29,7 +29,9 @@ predictions for individual samples.
 Cross-validation
 ----------------
 
-Cross-validation provides a more robust estimate of model performance by repeatedly training and evaluating the model on different subsets of the data. Five-fold stratified cross-validation is enabled by default but can be disabled. The number of folds is reduced automatically when the smallest class contains fewer samples than the requested number of folds.
+Cross-validation provides a more robust estimate of model performance by repeatedly training and evaluating the model on different subsets of the data. Five-fold 
+stratified cross-validation is enabled by default but can be disabled. The number of folds is reduced automatically when the smallest class contains fewer samples than 
+the requested number of folds.
 
 Leakage control
 ---------------
