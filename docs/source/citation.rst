@@ -39,11 +39,6 @@ workflow concepts described in **PepsNMR** and partially in **Protomix**.
   `https://doi.org/10.1093/bioadv/vbae192
   <https://doi.org/10.1093/bioadv/vbae192>`_
 
-Related source code
-~~~~~~~~~~~~~~~~~~~
-
-* `PepsNMR repository <https://github.com/ManonMartin/PepsNMR>`_
-* `Protomix repository <https://github.com/mzniber/Protomix>`_
 
 Source code
 -----------
