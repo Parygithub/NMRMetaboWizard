@@ -4,8 +4,8 @@ Overview
 Purpose
 -------
 
-NMRMetaboWizard connects raw Bruker FID processing, clinical metadata,
-exploratory analysis, outlier screening, and machine learning in one
+NMRMetaboWizard connects raw Bruker free induction decay (FID) processing, clinical metadata,
+exploratory data (EDA) analysis, outlier screening, and machine learning (ML) in an
 interactive interface. It is designed for researchers who need an auditable
 workflow but do not want to write code for every processing step.
 
@@ -25,7 +25,7 @@ Design principles
 - Stepwise inspection rather than hidden batch processing.
 - Optional preprocessing steps can be skipped.
 - Spectral features, clinical metadata, and labels remain conceptually separate.
-- Plot data and result tables can be downloaded.
+- Resulting figures and tables can be downloaded.
 - ML preprocessing is fitted inside the model pipeline.
 - Outlier detection flags samples for review rather than deleting them automatically.
 
