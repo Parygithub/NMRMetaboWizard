@@ -6,7 +6,7 @@ EDA helps identify patterns, trends, outliers, and potential data-quality issues
 
 
 Principal component analysis (PCA)
------------------
+------
 
 PCA is applied to the median-imputed (replaced missing values with the median) and normalized NMR bins. The app provides:
 
@@ -23,7 +23,7 @@ Loadings are plotted against ppm-bin centers. Numeric ppm axes use conventional
 reversed NMR orientation and integer tick labels. Loadings indicate which bins
 contribute to a component; they do not by themselves identify metabolites.
 
-PLS-DA
+Partial least squares-discriminant analysis(PLS-DA)
 ------
 
 PLS-DA uses one-hot encoded class labels and ``PLSRegression``. Score plots are
