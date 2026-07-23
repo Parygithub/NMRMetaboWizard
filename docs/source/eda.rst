@@ -5,7 +5,7 @@ Exploratory data analysis (EDA)
 EDA helps identify patterns, trends, outliers, and potential data-quality issues before further statistical analysis or modelling.
 
 
-Principal component analysis (PCA)
+Principal component analysis(PCA)
 -----------------
 
 PCA is applied to the median-imputed (replaced missing values with the median) and normalized NMR bins. The app provides:
