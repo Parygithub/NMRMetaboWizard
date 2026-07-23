@@ -61,9 +61,9 @@ the current implementation.
 Feature importance
 ------------------
 
-- logistic regression and linear SVM: mean absolute coefficient;
-- random forest: impurity-based feature importance;
-- ANN: mean absolute first-layer weight, which is an approximate heuristic.
+Feature importance helps identify which variables contribute most strongly to a model’s predictions. For logistic regression and linear SVM, importance is calculated 
+from the mean absolute model coefficients. For random forests, it is based on the reduction in node impurity produced by each feature. For artificial neural networks, 
+importance is approximated using the mean absolute weights in the first layer and should therefore be interpreted cautiously.
 
 When optional PCA is used, the displayed feature-importance table is obtained
 from a separate full-data model without PCA so original variables remain
