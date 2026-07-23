@@ -16,8 +16,8 @@ Models
 
 - logistic regression;
 - random forest;
-- linear SVM using ``LinearSVC``;
-- ANN/MLP using ``MLPClassifier``.
+- linear support vector machine (SVM) using ``LinearSVC``;
+- Artificial neural network (ANN)/Multilayer perceptron (MLP) using ``MLPClassifier``.
 
 Holdout evaluation
 ------------------
