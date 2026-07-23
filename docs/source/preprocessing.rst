@@ -77,7 +77,7 @@ Zero filling appends complex zeros to the FID before Fourier transformation, inc
 Fourier transformation and ppm axis
 -----------------------------------
 
-The time-domain FID is converted into a frequency-domain spectrum using ``fft``,while ``fftshift``reorders the frequency components around the spectral center. The chemical-shift axis is then calculated in parts per million (ppm) from the spectral width (``SW_h``). transmitter offset (``O1``), and observation frequency (``SFO1``), allowing peak positions to be reported independently of the magnetic-field strength.
+The time-domain FID is converted into a frequency-domain spectrum using ``fft``,while ``fftshift`` reorders the frequency components around the spectral center. The chemical-shift axis is then calculated in parts per million (ppm) from the spectral width (``SW_h``). transmitter offset (``O1``), and observation frequency (``SFO1``), allowing peak positions to be reported independently of the magnetic-field strength.
 
 Phasing, referencing, and baseline
 ----------------------------------
