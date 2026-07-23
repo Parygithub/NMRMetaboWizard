@@ -14,24 +14,20 @@ Predictor sources
 Models
 ------
 
-- logistic regression;
-- random forest;
-- linear support vector machine (SVM) using ``LinearSVC``;
+- Logistic regression;
+- Random forest;
+- Linear support vector machine (SVM) using ``LinearSVC``;
 - Artificial neural network (ANN)/Multilayer perceptron (MLP) using ``MLPClassifier``.
 
 Holdout evaluation
 ------------------
 
-The default test fraction is 0.25. The split is stratified when class counts
-permit. The app reports training and test accuracy and balanced accuracy,
-classification reports, confusion matrices, and individual predictions.
+Holdout evaluation assesses model performance on a separate subset of data that is not used for training. By default, 25% of the samples are reserved for testing, and the split is stratified when class sizes permit. The app reports training and test accuracy, balanced accuracy, classification reports, confusion matrices, and predictions for individual samples.
 
 Cross-validation
 ----------------
 
-Five-fold stratified cross-validation is enabled by default and can be
-disabled. The number of folds is reduced automatically when the smallest class
-contains fewer samples than requested.
+Cross-validation provides a more robust estimate of model performance by repeatedly training and evaluating the model on different subsets of the data. Five-fold stratified cross-validation is enabled by default but can be disabled. The number of folds is reduced automatically when the smallest class contains fewer samples than the requested number of folds.
 
 Leakage control
 ---------------
