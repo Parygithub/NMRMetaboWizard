@@ -62,4 +62,3 @@ License
 
 NMRMetaboWizard is distributed under the MIT License.
 
-NMRMetaboWizard is distributed under the MIT License.
