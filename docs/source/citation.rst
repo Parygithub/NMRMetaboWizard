@@ -43,7 +43,7 @@ workflow concepts described in **PepsNMR** and partially in **Protomix**.
 Source code
 -----------
 
-`GitHub repository <https://github.com/Parygithub/NMRMetaboWizard>`_
+`NMRMetaboWizard GitHub repository <https://github.com/Parygithub/NMRMetaboWizard>`_
 
 User documentation
 ------------------
