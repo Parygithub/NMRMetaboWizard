@@ -25,9 +25,6 @@ Related software and methods
 
 The NMR preprocessing workflow in NMRMetaboWizard builds on methods and
 workflow concepts described in **PepsNMR** and partially in **Protomix**. 
-When these
-methods are relevant to an analysis, users should also cite the corresponding
-publications:
 
 * Martin, M., Legat, B., Leenders, J., Vanwinsberghe, J., Rousseau, R.,
   Boulanger, B., Eilers, P. H. C., De Tullio, P., and Govaerts, B. (2018).
