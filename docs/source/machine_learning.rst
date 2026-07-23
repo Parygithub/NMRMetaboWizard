@@ -1,7 +1,7 @@
 Machine learning(ML)
 ================
 
-In ML, algorithms analyze data to learn patterns and make predictions.
+In ML, algorithms analyze training data to identify meaningful patterns and relationships. These learned patterns are then used to classify samples and make predictions for new, unseen data.
 
 Predictor sources
 -----------------
