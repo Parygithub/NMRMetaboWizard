@@ -1,4 +1,5 @@
-Exploratory data analysis
+Exploratory data analysis (EDA)
+EDA helps identify patterns, trends, outliers, and potential data-quality issues before further statistical analysis or modelling.
 =========================
 
 PCA
