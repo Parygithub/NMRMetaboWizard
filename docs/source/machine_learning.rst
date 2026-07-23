@@ -22,7 +22,9 @@ Models
 Holdout evaluation
 ------------------
 
-Holdout evaluation assesses model performance on a separate subset of data that is not used for training. By default, 25% of the samples are reserved for testing, and the split is stratified when class sizes permit. The app reports training and test accuracy, balanced accuracy, classification reports, confusion matrices, and predictions for individual samples.
+Holdout evaluation assesses model performance on a separate subset of data that is not used for training. By default, 25% of the samples are reserved for testing, 
+and the split is stratified when class sizes permit. The app reports training and test accuracy, balanced accuracy, classification reports, confusion matrices, and 
+predictions for individual samples.
 
 Cross-validation
 ----------------
