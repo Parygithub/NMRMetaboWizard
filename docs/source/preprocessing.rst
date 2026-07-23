@@ -60,7 +60,7 @@ Default parameters
 Group delay
 -----------
 
-The group-delay step removes the initial number of complex FID points defined
+The group-delay step removes the initial FID points introduced by digital oversampling and filtering hardware (which do not contain spectral information) defined
 by ``GRPDLY`` or by a user override.
 
 Solvent residual suppression
@@ -72,8 +72,8 @@ parts using penalized second differences and subtracted from the FID.
 Apodization and zero filling
 ----------------------------
 
-Exponential and Gaussian windows are available. Zero filling appends complex
-zeros to the time-domain signal before Fourier transformation.
+Apodization applies a weighting function to the time-domain FID before Fourier transformation. Exponential and Gaussian windows are available to improve signal-to-noise ratio, reduce truncation artifacts, or modify spectral line shapes, although these effects may involve a trade-off in spectral resolution. 
+Zero filling appends complex zeros to the FID before Fourier transformation, increasing the number of frequency-domain data points and producing a smoother spectrum without adding new spectral information or improving the intrinsic resolution.
 
 Fourier transformation and ppm axis
 -----------------------------------
