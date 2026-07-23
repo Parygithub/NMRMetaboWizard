@@ -5,7 +5,7 @@ Purpose
 -------
 
 NMRMetaboWizard connects raw Bruker free induction decay (FID) processing, clinical metadata,
-exploratory data (EDA) analysis, outlier screening, and machine learning (ML) in an
+exploratory data analysis (EDA), outlier screening, and machine learning (ML) in an
 interactive interface. It is designed for researchers who need an auditable
 workflow but do not want to write code for every processing step.
 
