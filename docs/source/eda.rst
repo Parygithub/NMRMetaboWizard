@@ -23,7 +23,7 @@ Loadings are plotted against ppm-bin centers. Numeric ppm axes use conventional
 reversed NMR orientation and integer tick labels. Loadings indicate which bins
 contribute to a component; they do not by themselves identify metabolites.
 
-Partial least squares-discriminant analysis(PLS-DA)
+Partial least squares-discriminant analysis (PLS-DA)
 ------
 
 PLS-DA uses one-hot encoded class labels and ``PLSRegression``. Score plots are
