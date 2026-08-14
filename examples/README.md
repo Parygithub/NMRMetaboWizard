@@ -1,26 +1,26 @@
 # Synthetic example data
 
-This folder contains fully synthetic data for demonstrating the main functions of NMRMetaboWizard. The files are generated for software testing and contain no patient data, measured biological spectra, or personal information.
+This folder contains fully synthetic, disease-neutral data for demonstrating NMRMetaboWizard. The files contain no patient data, measured biological spectra, or personal information.
 
 ## Files
 
 - `demo_cohort_bruker.zip`  
   Contains 16 synthetic Bruker-like one-dimensional ^1H NMR FIDs:
-  - 8 BPH-labelled samples
-  - 8 PCa-labelled samples
+  - 8 `Class_A` samples
+  - 8 `Class_B` samples
 
 - `demo_clinical_metadata.csv`  
-  Contains matching synthetic clinical metadata, including:
+  Contains matching synthetic metadata, including:
   - `study_id`
   - `Class`
   - age
-  - PSA
+  - `biomarker`
   - height
   - weight
   - creatinine
-  - prostate volume
+  - `clinical_measure`
 
-The `study_id` values in the clinical file match the sample-folder names in the Bruker ZIP archive.
+The `study_id` values match the sample-folder names in the Bruker ZIP archive.
 
 ## How to use the example data
 
@@ -35,7 +35,8 @@ The `study_id` values in the clinical file match the sample-folder names in the 
    Class column: Class
    ```
 
-6. Continue to PCA, PCA loadings, PLS-DA, outlier screening, and machine-learning analysis.
+6. In EDA, select `biomarker` or `clinical_measure` to test the optional generic cutoff plots.
+7. In ML, select either variable for selected-variable modelling or the optional threshold-rule benchmark.
 
 ## Important note
 

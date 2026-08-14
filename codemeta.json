@@ -2,15 +2,22 @@
   "@context": "https://doi.org/10.5063/schema/codemeta-2.0",
   "@type": "SoftwareSourceCode",
   "name": "NMRMetaboWizard",
-  "description": "Interactive Shiny for Python application for stepwise preprocessing, clinical metadata integration, EDA, outlier screening, and machine learning of one-dimensional Bruker 1H NMR metabolomics data.",
+  "description": "Disease-neutral Shiny for Python application for stepwise preprocessing, clinical metadata integration, exploratory analysis, outlier screening, and machine learning of one-dimensional Bruker 1H NMR metabolomics data.",
   "version": "0.1.0",
   "dateCreated": "2026-07-16",
-  "dateModified": "2026-07-21",
+  "dateModified": "2026-08-13",
   "programmingLanguage": "Python",
   "runtimePlatform": "Python >=3.10",
+  "operatingSystem": [
+    "Windows",
+    "macOS",
+    "Linux"
+  ],
+  "applicationCategory": "Scientific software",
   "license": "https://spdx.org/licenses/MIT",
   "codeRepository": "https://github.com/Parygithub/NMRMetaboWizard",
   "issueTracker": "https://github.com/Parygithub/NMRMetaboWizard/issues",
+  "url": "https://parygithub-nmrmetabowizard.share.connect.posit.cloud/",
   "author": [
     {
       "@type": "Person",
@@ -34,7 +41,8 @@
   "keywords": [
     "NMR metabolomics",
     "Bruker FID",
-    "urine metabolomics",
+    "untargeted metabolomics",
+    "clinical metadata",
     "Shiny for Python",
     "PCA",
     "PLS-DA",

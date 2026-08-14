@@ -1,7 +1,7 @@
 Preprocessing
 =============
 
-The app stores the full-resolution data for calculations and uses
+The app stores full-resolution arrays for calculations and uses
 peak-preserving downsampling only for display.
 
 Default parameters
@@ -33,11 +33,14 @@ Default parameters
      - automatic zero-order
      - Manual angle or skip is available.
    * - Referencing
-     - target 0 ppm, search -0.2 to 0.2 ppm
-     - Can be skipped.
+     - disabled
+     - Enable only when an appropriate reference peak and interval are known.
    * - Baseline
      - ALS, lambda ``1e6``, p ``0.01``, 12 iterations
      - arPLS and airPLS are also available.
+   * - Baseline exclusion interval
+     - disabled
+     - A custom interval can be excluded when a dominant artifact distorts the fit.
    * - Alignment
      - disabled
      - Integer cross-correlation shift, not full icoshift.
@@ -48,8 +51,8 @@ Default parameters
      - 0.2-10 ppm
      - Can be skipped to retain the full ppm range.
    * - Region removal
-     - 4.5-6.1 ppm, zero mode
-     - Urine-focused default; interpolation is optional.
+     - ``None``
+     - Optional urine preset or custom interval.
    * - Binning
      - width 0.01 ppm, trapezoidal
      - May instead specify total bin count or rectangular integration.
@@ -60,55 +63,67 @@ Default parameters
 Group delay
 -----------
 
-The group-delay step removes the initial FID points introduced by digital oversampling and filtering hardware (which do not contain spectral information) defined
-by ``GRPDLY`` or by a user override.
+The group-delay step removes the initial complex FID points defined by
+``GRPDLY`` or by a user override.
 
 Solvent residual suppression
------------------------------
-Solvent residual removal suppresses the intense residual solvent signal (usually water) in the NMR spectrum to improve visualization and analysis of weaker analyte peaks.
-λ is used as the smoothing or roughness penalty parameter used in Whittaker-based solvent residual estimation: the higher λ is, the smoother the estimated solvent signal becomes. 
+----------------------------
+
+A smooth component is estimated separately from the real and imaginary FID
+parts using penalized second differences and subtracted from the FID. The
+lambda parameter controls smoothness. This optional operation requires visual
+quality control because an unsuitable setting may affect broad sample signals.
 
 Apodization and zero filling
 ----------------------------
 
-Apodization applies a weighting function to the time-domain FID before Fourier transformation. Exponential and Gaussian windows are available to improve signal-to-noise ratio, reduce truncation artifacts, or modify spectral line shapes, although these effects may involve a trade-off in spectral resolution. 
-Zero filling appends complex zeros to the FID before Fourier transformation, increasing the number of frequency-domain data points and producing a smoother spectrum without adding new spectral information or improving the intrinsic resolution.
+Exponential and Gaussian weighting functions are available. Zero filling
+appends complex zeros before Fourier transformation. It increases digital
+sampling density but does not add experimental information or intrinsic
+spectral resolution.
 
 Fourier transformation and ppm axis
 -----------------------------------
 
-The time-domain FID is converted into a frequency-domain spectrum using ``fft``, while ``fftshift`` reorders the frequency components around the spectral center. The chemical-shift axis is then calculated in parts per million (ppm) from the spectral width (``SW_h``). transmitter offset (``O1``), and observation frequency (``SFO1``), allowing peak positions to be reported independently of the magnetic-field strength.
+The time-domain FID is converted to the frequency domain using ``fft`` and
+reordered with ``fftshift``. The ppm axis is calculated from ``SW_h``, ``O1``,
+and ``SFO1``.
 
 Phasing, referencing, and baseline
 ----------------------------------
 
-Automatic phasing estimates and applies an independent zero-order phase correction to each spectrum, improving absorptive peak shapes and reducing dispersive distortions. Chemical-shift referencing identifies the largest peak within a selected interval and aligns it with the specified reference position. Baseline correction removes slowly varying background distortions using asymmetric least squares (ALS), asymmetrically reweighted penalized least squares (arPLS), or adaptive iteratively reweighted penalized least squares (airPLS), thereby improving peak visualization and quantification.
+Automatic phasing estimates an independent zero-order phase for each
+spectrum. Referencing is disabled by default and should be enabled only when a
+suitable reference signal is present. Baseline correction supports ALS,
+arPLS, and airPLS. By default, the full spectrum contributes to baseline
+estimation; users may optionally exclude a custom solvent or artifact
+interval.
 
 Alignment limitation
 --------------------
 
-The current alignment method searches integer point shifts that maximize
-correlation with a selected reference spectrum within one ppm window. It is
-not a full interval-correlation-shifting implementation.
-
-Negative-value zeroing 
---------------------
-
-Negative intensities may remain after phasing and baseline correction, particularly in noisy or low-signal regions. Setting negative values to zero produces a non-negative dataset that is better suited to integration, normalization, and multivariate modelling. By default, the app replaces all negative values with zero, although users may change this setting.
-
-Spectral window selection
--------------------------
-
-Limiting the analysis to a relevant ppm range removes unused portions of the spectrum and ensures that all samples are processed over the same domain. This reduces the size of the resulting dataset and prevents regions with little analytical value from contributing to subsequent region exclusion, binning, normalization, and statistical modelling. The lower and upper limits are entered in the 'Window min ppm' and 'Window max ppm' fields, and the retained region is displayed for visual inspection.
+The alignment method searches integer point shifts that maximize correlation
+with a selected reference spectrum within one ppm interval. The interval
+should avoid dominant solvent or artifact peaks. The method is not full
+interval-correlation shifting or local warping.
 
 Region removal
--------------------------
+--------------
 
-This step removes an internal ppm interval that should not contribute to later analysis. For urine samples, the 4.5–6.1 ppm range is excluded to reduce the influence of intense water- and urea-associated signals in the spectra.
-Two processing options are available. The zero option replaces all values inside the specified interval with zero, whereas interpolate reconstructs the interval from the signal values at its boundaries. The first option retains an explicitly empty region, while the second provides a continuous spectral profile. 
+Region removal is optional and disabled by default. Users may choose:
+
+- ``None`` - preserve the selected spectral window;
+- ``Urine water/urea (4.5-6.1 ppm)`` - a urine-specific preset;
+- ``Custom`` - a user-defined ppm interval.
+
+The zero mode replaces values inside the interval with zero. The interpolate
+mode reconstructs the interval from the signal values at its boundaries. A
+sample-type-specific preset should be used only when scientifically justified.
 
 Binning and normalization
 -------------------------
 
-Binning partitions each processed NMR spectrum into chemical-shift intervals defined either by a fixed bin width or by a specified number of bins. The signal within each interval is integrated using either the **trapezoidal** or **rectangular** method to generate a binned data matrix. The shaded vertical regions displayed across the spectrum indicate the bin boundaries, while the calculated integrals can be inspected in the table preview and exported as a CSV file.
-The binned data can then be normalized using probabilistic quotient normalization (PQN), total-area normalization, standard normal variate normalization (SNV), or left unnormalized. PQN estimates sample-specific dilution factors relative to the median spectrum, total-area normalization scales each sample by its total integrated signal, and SNV centres and scales each binned spectrum using its mean and standard deviation. The resulting normalized matrix can be exported for exploratory analysis, statistical testing, and machine-learning applications.
+Binning partitions each processed spectrum into chemical-shift intervals
+defined by a fixed width or a total bin count. Signals are integrated using
+the trapezoidal or rectangular method. PQN, total-area normalization, SNV, or
+no normalization can then be applied.
