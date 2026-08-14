@@ -219,7 +219,7 @@ def _solvent_smooth_1d(y: np.ndarray, lam: float = 1e6, d: int = 2) -> np.ndarra
 
 def apply_solvent_residuals_removal(samples: list[dict], lam: float = 1e6, enabled: bool = True) -> list[dict]:
     """
-    Protomix/PepsNMR-style solvent residual suppression in the FID domain.
+    Whittaker-type solvent residual suppression in the FID domain.
 
     A smooth residual signal is estimated separately for real and imaginary FID
     parts using penalized second differences, then subtracted.
@@ -285,7 +285,7 @@ def apply_apodization(samples: list[dict], lb: float = 1.0, kind: str = "exponen
 
 def apply_zero_filling(samples: list[dict], extra_points: int = 32768) -> list[dict]:
     """
-    Protomix-style zero filling: add `extra_points` zeros to the end of the FID.
+    Append `extra_points` complex zeros to the end of the FID.
     """
     out = []
     extra_points = int(extra_points)
@@ -317,7 +317,7 @@ def apply_zero_filling(samples: list[dict], extra_points: int = 32768) -> list[d
 
 def make_ppm_axis(acqus: dict, n_points: int) -> np.ndarray:
     """
-    Protomix-style ppm conversion:
+    Construct the ppm axis from Bruker acquisition parameters:
         dwell_time = 1 / SW_h
         freq = fftfreq(n, dwell_time)
         freq = fftshift(freq + O1)
@@ -661,7 +661,7 @@ def estimate_baseline(
     smoothness: float = 1e6,
     asymmetry: float = 0.01,
     max_iter: int = 12,
-    exclude_region_text: str = "4.5-5.1",
+    exclude_region_text: str = "",
     max_points: int = 3000,
 ) -> np.ndarray:
     """
@@ -732,7 +732,7 @@ def apply_baseline_correction(
     smoothness: float = 1e6,
     asymmetry: float = 0.01,
     max_iter: int = 12,
-    exclude_region_text: str = "4.5-5.1",
+    exclude_region_text: str = "",
     max_points: int = 3000,
 ) -> list[dict]:
     out = []
@@ -939,7 +939,7 @@ def _remove_region(ppm: np.ndarray, y: np.ndarray, region_text: str, mode: str =
     raise ValueError("Region removal mode must be 'zero' or 'interpolate'.")
 
 
-def apply_region_removal(samples: list[dict], region_text: str = "4.5-5.1", mode: str = "zero") -> list[dict]:
+def apply_region_removal(samples: list[dict], region_text: str = "", mode: str = "zero") -> list[dict]:
     out = []
 
     for sample in samples:

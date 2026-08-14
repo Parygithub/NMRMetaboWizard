@@ -31,8 +31,15 @@ from sklearn.svm import LinearSVC
 def read_clinical_file(path: str | Path) -> pd.DataFrame:
     path = Path(path)
 
-    if path.suffix.lower() == ".xlsx":
+    suffix = path.suffix.lower()
+
+    if suffix == ".xlsx":
         df = pd.read_excel(path)
+    elif suffix == ".xls":
+        raise ValueError(
+            "Legacy .xls files are not supported. Save the clinical table as "
+            ".xlsx, .csv, .tsv, or .txt and upload it again."
+        )
     else:
         df = pd.read_csv(path, sep=None, engine="python")
 
@@ -82,7 +89,7 @@ def _standardize_class_labels(y: pd.Series) -> pd.Series:
     Standardize class labels conservatively.
 
     Examples:
-        PCa, Pca, pca -> the most frequent spelling among those values.
+        GroupA, groupa, GROUPA -> the most frequent spelling among those values.
 
     Robust to Excel/pandas reading occasional labels as non-string values.
     Empty/NaN class labels are kept empty and are removed later by the alignment logic.
@@ -849,6 +856,12 @@ def _feature_importance(model, feature_cols: list[str]) -> pd.DataFrame:
 
     for feature in feature_cols:
         clean = str(feature)
+
+        if clean.startswith("clinical__"):
+            origins.append("Clinical")
+            ppm_values.append(clean.replace("clinical__", "", 1))
+            continue
+
         if clean.startswith("nmr__"):
             clean = clean.replace("nmr__", "", 1)
 
@@ -875,33 +888,48 @@ def _feature_importance(model, feature_cols: list[str]) -> pd.DataFrame:
     return out
 
 
-def _find_column_case_insensitive(columns, requested: str | None):
-    if requested is None:
-        requested = ""
+def _normalize_optional_column_name(value: str | None) -> str | None:
+    """Normalize optional clinical-variable selections from the UI."""
+    if value is None:
+        return None
 
-    requested = str(requested).strip()
+    value = str(value).strip()
+    if value.lower() in {"", "none", "no variable", "not selected", "null"}:
+        return None
+
+    return value
+
+
+def _find_column_case_insensitive(columns, requested: str | None):
+    requested = _normalize_optional_column_name(requested)
+    if requested is None:
+        return None
 
     if requested in columns:
         return requested
 
-    lower_map = {str(c).lower(): c for c in columns}
-
-    if requested.lower() in lower_map:
-        return lower_map[requested.lower()]
-
-    if requested.lower() in ["", "auto", "psa"]:
-        for c in columns:
-            if str(c).strip().lower() == "psa":
-                return c
-
-        for c in columns:
-            if "psa" in str(c).strip().lower():
-                return c
-
-    return None
+    lower_map = {str(c).strip().lower(): c for c in columns}
+    return lower_map.get(requested.lower())
 
 
-def _numeric_clinical_features(aligned: dict, psa_only: bool = False, psa_col: str | None = "psa") -> pd.DataFrame:
+def _numeric_clinical_features(
+    aligned: dict,
+    selected_only: bool = False,
+    selected_col: str | None = None,
+    include_cols: list[str] | tuple[str, ...] | None = None,
+) -> pd.DataFrame:
+    """Return numeric clinical predictors aligned to the NMR sample order.
+
+    Parameters
+    ----------
+    selected_only:
+        Use exactly one user-selected numeric clinical variable.
+    selected_col:
+        Variable used when ``selected_only`` is True.
+    include_cols:
+        Optional explicit predictor list for clinical-only or combined models.
+        When omitted, all usable numeric clinical variables are included.
+    """
     _X, _y = _require_aligned(aligned)
     clinical = aligned.get("clinical_aligned", pd.DataFrame()).copy()
     class_col = aligned.get("summary", {}).get("class_col", "Class")
@@ -909,11 +937,23 @@ def _numeric_clinical_features(aligned: dict, psa_only: bool = False, psa_col: s
 
     exclude = {class_col, clinical_id_col, "_match_key"}
 
-    if psa_only:
-        found = _find_column_case_insensitive(clinical.columns, psa_col)
+    if selected_only:
+        found = _find_column_case_insensitive(clinical.columns, selected_col)
         if found is None:
-            raise ValueError("PSA-only model requested, but no PSA column was found.")
+            raise ValueError(
+                "A selected-clinical-variable model was requested, but no "
+                "numeric clinical variable was selected."
+            )
         use_cols = [found]
+    elif include_cols is not None:
+        use_cols = []
+        for requested in include_cols:
+            found = _find_column_case_insensitive(clinical.columns, requested)
+            if found is None or found in exclude or found in use_cols:
+                continue
+            numeric = pd.to_numeric(clinical[found], errors="coerce")
+            if numeric.notna().sum() >= 2:
+                use_cols.append(found)
     else:
         use_cols = []
         for col in clinical.columns:
@@ -924,43 +964,52 @@ def _numeric_clinical_features(aligned: dict, psa_only: bool = False, psa_col: s
                 use_cols.append(col)
 
     if not use_cols:
-        raise ValueError("No usable numeric clinical variables were found.")
+        raise ValueError("No usable numeric clinical predictors were selected.")
 
     out = pd.DataFrame(index=clinical.index)
-
     for col in use_cols:
         out[f"clinical__{col}"] = pd.to_numeric(clinical[col], errors="coerce")
 
     out = out.dropna(axis=1, how="all")
-
     if out.shape[1] == 0:
-        raise ValueError("No usable numeric clinical variables remained after cleaning.")
+        raise ValueError("No usable numeric clinical predictors remained after cleaning.")
 
     return out
 
 
-def _subset_aligned_by_psa(aligned: dict, psa_col: str | None = "psa", psa_cutoff: float = 4.0, psa_subset: str = "All samples") -> dict:
-    subset = str(psa_subset)
+def _subset_aligned_by_variable(
+    aligned: dict,
+    variable_col: str | None = None,
+    variable_cutoff: float = 0.0,
+    variable_subset: str = "All samples",
+) -> dict:
+    """Optionally subset samples using any selected numeric clinical variable."""
+    subset = str(variable_subset or "All samples")
 
     if subset == "All samples":
         return aligned
 
     X, y = _require_aligned(aligned)
     clinical = aligned.get("clinical_aligned", pd.DataFrame()).copy()
-
-    found = _find_column_case_insensitive(clinical.columns, psa_col)
+    found = _find_column_case_insensitive(clinical.columns, variable_col)
 
     if found is None:
-        raise ValueError("PSA subset was requested, but no PSA column was found.")
+        raise ValueError(
+            "A clinical-variable subset was requested, but no numeric clinical "
+            "variable was selected."
+        )
 
-    psa = pd.to_numeric(clinical[found], errors="coerce")
+    values = pd.to_numeric(clinical[found], errors="coerce")
+    cutoff = float(variable_cutoff)
 
-    if "Low PSA" in subset:
-        keep = psa < float(psa_cutoff)
-    elif "High PSA" in subset:
-        keep = psa >= float(psa_cutoff)
+    if subset == "Below cutoff":
+        keep = values < cutoff
+    elif subset == "At or above cutoff":
+        keep = values >= cutoff
     else:
-        keep = pd.Series(True, index=clinical.index)
+        raise ValueError(
+            "Variable subset must be All samples, Below cutoff, or At or above cutoff."
+        )
 
     keep = keep.fillna(False)
 
@@ -970,9 +1019,9 @@ def _subset_aligned_by_psa(aligned: dict, psa_col: str | None = "psa", psa_cutof
     filtered["clinical_aligned"] = clinical.loc[keep.values].copy()
 
     summary = dict(aligned.get("summary", {}))
-    summary["psa_subset"] = subset
-    summary["psa_col"] = found
-    summary["psa_cutoff"] = float(psa_cutoff)
+    summary["variable_subset"] = subset
+    summary["selected_variable"] = found
+    summary["variable_cutoff"] = cutoff
     summary["n_matched_with_class"] = int(len(filtered["X"]))
     filtered["summary"] = summary
 
@@ -982,7 +1031,8 @@ def _subset_aligned_by_psa(aligned: dict, psa_col: str | None = "psa", psa_cutof
 def _make_model_features(
     aligned: dict,
     feature_mode: str = "NMR only",
-    psa_col: str | None = "psa",
+    selected_variable_col: str | None = None,
+    clinical_predictors: list[str] | tuple[str, ...] | None = None,
 ) -> pd.DataFrame:
     X, _y = _require_aligned(aligned)
     feature_mode = str(feature_mode)
@@ -994,75 +1044,106 @@ def _make_model_features(
         return X_nmr
 
     if feature_mode == "Clinical only":
-        return _numeric_clinical_features(aligned, psa_only=False, psa_col=psa_col)
+        return _numeric_clinical_features(
+            aligned,
+            selected_only=False,
+            include_cols=clinical_predictors,
+        )
 
-    if feature_mode == "PSA only":
-        return _numeric_clinical_features(aligned, psa_only=True, psa_col=psa_col)
+    if feature_mode == "Selected clinical variable only":
+        return _numeric_clinical_features(
+            aligned,
+            selected_only=True,
+            selected_col=selected_variable_col,
+        )
 
     if feature_mode == "NMR + clinical":
-        clinical = _numeric_clinical_features(aligned, psa_only=False, psa_col=psa_col)
+        clinical = _numeric_clinical_features(
+            aligned,
+            selected_only=False,
+            include_cols=clinical_predictors,
+        )
         nmr = X_nmr.copy()
         nmr.columns = [f"nmr__{c}" for c in nmr.columns]
         return pd.concat([nmr, clinical], axis=1)
 
-    raise ValueError("Feature mode must be NMR only, Clinical only, NMR + clinical, or PSA only.")
+    raise ValueError(
+        "Feature mode must be NMR only, Clinical only, NMR + clinical, or "
+        "Selected clinical variable only."
+    )
 
 
-def _psa_cutoff_baseline(
+def _threshold_rule_baseline(
     aligned: dict,
-    psa_col: str | None = "psa",
-    psa_cutoff: float = 4.0,
+    enabled: bool = False,
+    variable_col: str | None = None,
+    variable_cutoff: float = 0.0,
+    positive_class: str | None = None,
+    direction: str = "At or above cutoff predicts positive class",
 ) -> dict:
-    """Simple PSA cutoff baseline for binary BPH/PCa-like labels."""
+    """Evaluate an optional, user-defined one-variable threshold rule.
+
+    This is a transparent benchmark, not a fitted machine-learning model. It is
+    available only for binary outcomes and never infers the positive class from
+    disease-specific words.
+    """
+    if not enabled:
+        return {"note": "Threshold-rule baseline not requested."}
+
     _X, y = _require_aligned(aligned)
     clinical = aligned.get("clinical_aligned", pd.DataFrame()).copy()
-    found = _find_column_case_insensitive(clinical.columns, psa_col)
+    found = _find_column_case_insensitive(clinical.columns, variable_col)
 
     if found is None:
-        return {"note": "No PSA column found."}
+        return {"note": "No numeric clinical variable was selected for the threshold rule."}
 
-    if y.nunique() != 2:
-        return {"note": "PSA cutoff baseline is shown only for two-class problems."}
+    classes = [str(c) for c in pd.Series(y).astype(str).unique()]
+    if len(classes) != 2:
+        return {"note": "Threshold-rule baseline is available only for two-class outcomes."}
 
-    classes = list(pd.Series(y).astype(str).unique())
-
-    positive = None
-    for c in classes:
-        cl = str(c).lower()
-        if "pca" in cl or "cancer" in cl or cl == "pc":
-            positive = c
-            break
-
-    if positive is None:
-        positive = classes[-1]
+    positive = str(positive_class or "").strip()
+    if positive not in classes:
+        return {
+            "note": "Select the positive class explicitly before calculating the threshold rule."
+        }
 
     negative = [c for c in classes if c != positive][0]
-
-    psa = pd.to_numeric(clinical[found], errors="coerce")
-    valid = psa.notna() & pd.Series(y.values, index=y.index).notna()
+    values = pd.to_numeric(clinical[found], errors="coerce")
+    y_series = pd.Series(y.astype(str).values, index=y.index)
+    valid = values.notna() & y_series.notna()
 
     if valid.sum() < 2:
-        return {"note": "Not enough valid PSA values for PSA cutoff baseline."}
+        return {"note": "Not enough valid values for the selected threshold rule."}
 
-    y_true = y.loc[valid.values].astype(str)
-    y_pred = pd.Series(np.where(psa.loc[valid.values] >= float(psa_cutoff), positive, negative), index=y_true.index)
+    cutoff = float(variable_cutoff)
+    if direction == "Below cutoff predicts positive class":
+        predicted_positive = values.loc[valid.values] < cutoff
+    else:
+        direction = "At or above cutoff predicts positive class"
+        predicted_positive = values.loc[valid.values] >= cutoff
 
-    le = LabelEncoder()
-    le.fit([negative, positive])
+    y_true = y_series.loc[valid.values]
+    y_pred = pd.Series(
+        np.where(predicted_positive, positive, negative),
+        index=y_true.index,
+    )
 
-    true_enc = le.transform(y_true)
-    pred_enc = le.transform(y_pred)
-
-    cm = pd.DataFrame(confusion_matrix(true_enc, pred_enc), index=le.classes_, columns=le.classes_)
+    labels = [negative, positive]
+    cm = pd.DataFrame(
+        confusion_matrix(y_true, y_pred, labels=labels),
+        index=labels,
+        columns=labels,
+    )
 
     return {
-        "psa_col": found,
-        "psa_cutoff": float(psa_cutoff),
+        "variable": found,
+        "cutoff": cutoff,
         "positive_class": positive,
         "negative_class": negative,
+        "direction": direction,
         "n_samples": int(valid.sum()),
-        "accuracy": float(accuracy_score(true_enc, pred_enc)),
-        "balanced_accuracy": float(balanced_accuracy_score(true_enc, pred_enc)),
+        "accuracy": float(accuracy_score(y_true, y_pred)),
+        "balanced_accuracy": float(balanced_accuracy_score(y_true, y_pred)),
         "confusion_matrix": cm,
     }
 
@@ -1118,9 +1199,13 @@ def train_ml_model(
     use_pca: bool = False,
     pca_components: int = 10,
     feature_mode: str = "NMR only",
-    psa_col: str | None = "psa",
-    psa_cutoff: float = 4.0,
-    psa_subset: str = "All samples",
+    selected_variable_col: str | None = None,
+    variable_cutoff: float = 0.0,
+    variable_subset: str = "All samples",
+    clinical_predictors: list[str] | tuple[str, ...] | None = None,
+    use_threshold_baseline: bool = False,
+    threshold_positive_class: str | None = None,
+    threshold_direction: str = "At or above cutoff predicts positive class",
     ann_hidden_layers="64,32",
     ann_activation: str = "relu",
     ann_alpha: float = 0.0001,
@@ -1129,15 +1214,20 @@ def train_ml_model(
     ann_early_stopping: bool = True,
     use_cv: bool = True,
 ) -> dict:
-    aligned_used = _subset_aligned_by_psa(
+    aligned_used = _subset_aligned_by_variable(
         aligned,
-        psa_col=psa_col,
-        psa_cutoff=psa_cutoff,
-        psa_subset=psa_subset,
+        variable_col=selected_variable_col,
+        variable_cutoff=variable_cutoff,
+        variable_subset=variable_subset,
     )
 
     _X_spectral, y = _require_aligned(aligned_used)
-    X = _make_model_features(aligned_used, feature_mode=feature_mode, psa_col=psa_col)
+    X = _make_model_features(
+        aligned_used,
+        feature_mode=feature_mode,
+        selected_variable_col=selected_variable_col,
+        clinical_predictors=clinical_predictors,
+    )
 
     if len(y.unique()) < 2:
         raise ValueError("Need at least two classes for ML after filtering/subsetting.")
@@ -1180,9 +1270,11 @@ def train_ml_model(
         "n_model_features": int(effective_pca_components if use_pca else X.shape[1]),
         "classes": list(le.classes_),
         "feature_reduction": f"PCA({effective_pca_components})" if use_pca else "none",
-        "psa_subset": psa_subset,
-        "psa_column": psa_col,
-        "psa_cutoff": float(psa_cutoff),
+        "variable_subset": variable_subset,
+        "selected_variable": _normalize_optional_column_name(selected_variable_col),
+        "variable_cutoff": float(variable_cutoff),
+        "clinical_predictors": list(clinical_predictors or []),
+        "threshold_baseline_requested": bool(use_threshold_baseline),
         "cross_validation_requested": bool(use_cv),
     }
 
@@ -1367,10 +1459,13 @@ def train_ml_model(
     final_model = final_pipe.named_steps["classifier"]
     importance = _feature_importance(final_model, list(X.columns))
 
-    psa_baseline = _psa_cutoff_baseline(
+    threshold_baseline = _threshold_rule_baseline(
         aligned_used,
-        psa_col=psa_col,
-        psa_cutoff=psa_cutoff,
+        enabled=bool(use_threshold_baseline),
+        variable_col=selected_variable_col,
+        variable_cutoff=variable_cutoff,
+        positive_class=threshold_positive_class,
+        direction=threshold_direction,
     )
 
     return {
@@ -1382,7 +1477,7 @@ def train_ml_model(
         "test_predictions": test_predictions,
         "probabilities": probability_df,
         "roc_curve": roc_df,
-        "psa_baseline": psa_baseline,
+        "threshold_baseline": threshold_baseline,
     }
 
 
@@ -1402,28 +1497,28 @@ def metrics_to_text(result: dict) -> str:
     for k, v in result["cv_summary"].items():
         lines.append(f"{k}: {v}")
 
-    psa = result.get("psa_baseline", {})
+    baseline = result.get("threshold_baseline", {})
     lines.append("")
-    lines.append("PSA cutoff baseline")
-    lines.append("===================")
+    lines.append("Threshold-rule baseline")
+    lines.append("=======================")
 
-    if psa:
-        note = psa.get("note")
+    if baseline:
+        note = baseline.get("note")
         if note:
             lines.append(note)
         else:
-            for k, v in psa.items():
+            for k, v in baseline.items():
                 if k == "confusion_matrix":
                     continue
                 lines.append(f"{k}: {v}")
 
-            cm = psa.get("confusion_matrix")
+            cm = baseline.get("confusion_matrix")
             if cm is not None and not cm.empty:
                 lines.append("")
-                lines.append("PSA baseline confusion matrix:")
+                lines.append("Threshold-rule confusion matrix:")
                 lines.append(cm.to_string())
     else:
-        lines.append("No PSA baseline calculated.")
+        lines.append("No threshold-rule baseline calculated.")
 
     lines.append("")
     lines.append("Classification report")
@@ -1431,4 +1526,3 @@ def metrics_to_text(result: dict) -> str:
     lines.append(result["classification_report"])
 
     return "\n".join(lines)
-

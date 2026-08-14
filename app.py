@@ -59,33 +59,33 @@ DEMO_N_POINTS = 4096
 
 
 def _demo_sample_rows() -> list[dict]:
-    """Create deterministic, fully synthetic clinical metadata."""
+    """Create deterministic, disease-neutral synthetic clinical metadata."""
     rng = np.random.default_rng(DEMO_RANDOM_SEED)
     rows = []
 
-    for class_label in ["BPH", "PCa"]:
+    for class_label in ["Class_A", "Class_B"]:
         for index in range(1, 9):
             sample_id = f"demo_{class_label}_{index:02d}"
 
-            if class_label == "BPH":
-                age = int(rng.integers(55, 79))
-                psa = float(np.clip(rng.normal(5.1, 1.5), 1.0, 10.0))
-                trus = float(np.clip(rng.normal(58.0, 12.0), 25.0, 100.0))
+            if class_label == "Class_A":
+                age = int(rng.integers(45, 72))
+                biomarker = float(np.clip(rng.normal(4.8, 1.4), 0.5, 9.0))
+                clinical_measure = float(np.clip(rng.normal(56.0, 11.0), 20.0, 95.0))
             else:
-                age = int(rng.integers(57, 81))
-                psa = float(np.clip(rng.normal(7.8, 2.0), 2.5, 15.0))
-                trus = float(np.clip(rng.normal(42.0, 10.0), 20.0, 85.0))
+                age = int(rng.integers(47, 75))
+                biomarker = float(np.clip(rng.normal(7.2, 1.8), 1.0, 13.0))
+                clinical_measure = float(np.clip(rng.normal(43.0, 10.0), 15.0, 85.0))
 
             rows.append(
                 {
                     "study_id": sample_id,
                     "Class": class_label,
                     "age": age,
-                    "psa": round(psa, 2),
-                    "height": int(rng.integers(165, 188)),
-                    "weight": int(rng.integers(65, 101)),
-                    "krea": int(rng.integers(65, 111)),
-                    "trus_volume_v2": round(trus, 1),
+                    "biomarker": round(biomarker, 2),
+                    "height": int(rng.integers(155, 190)),
+                    "weight": int(rng.integers(50, 105)),
+                    "creatinine": int(rng.integers(55, 115)),
+                    "clinical_measure": round(clinical_measure, 1),
                 }
             )
 
@@ -99,7 +99,7 @@ def _demo_fid_bytes(class_label: str, sample_index: int) -> bytes:
     chemical-shift offsets, linewidths, phases, water residual, and noise.
     The generated data are for software demonstration only.
     """
-    seed_offset = 0 if class_label == "BPH" else 1000
+    seed_offset = 0 if class_label == "Class_A" else 1000
     rng = np.random.default_rng(
         DEMO_RANDOM_SEED + seed_offset + int(sample_index)
     )
@@ -123,7 +123,7 @@ def _demo_fid_bytes(class_label: str, sample_index: int) -> bytes:
     )
 
     # Distributed class effects create a useful but non-trivial example.
-    if class_label == "PCa":
+    if class_label == "Class_B":
         class_effect = np.array(
             [1.00, 1.22, 0.78, 1.35, 1.28, 1.12, 1.30,
              0.76, 1.24, 0.88, 1.18, 1.25, 1.18, 0.82]
@@ -859,11 +859,22 @@ def sample_only_controls(choices):
     )
 
 
-def clinical_variable_choices(aligned, include_class=True, include_psa_groups=True):
+def _optional_variable_name(value) -> str | None:
+    if value is None:
+        return None
+
+    value = str(value).strip()
+    if value.lower() in {"", "none", "no variable", "not selected", "null"}:
+        return None
+
+    return value
+
+
+def clinical_variable_choices(aligned, include_class=True, include_variable_groups=True):
     choices = ["Class"] if include_class else []
 
-    if include_psa_groups:
-        choices.extend(["PSA group", "Class + PSA group"])
+    if include_variable_groups:
+        choices.extend(["Variable group", "Class + variable group"])
 
     if aligned is None:
         return choices
@@ -886,43 +897,61 @@ def clinical_variable_choices(aligned, include_class=True, include_psa_groups=Tr
     return choices
 
 
-def numeric_clinical_choices(aligned, prefer_psa=True):
+def numeric_clinical_choices(aligned, include_none=True):
     choices = []
 
+    if aligned is not None:
+        clinical = aligned.get("clinical_aligned")
+        summary = aligned.get("summary", {})
+
+        if clinical is not None and not clinical.empty:
+            class_col = summary.get("class_col", "Class")
+            clinical_id_col = summary.get("clinical_id_col", "")
+
+            for col in clinical.columns:
+                if col in [class_col, clinical_id_col, "_match_key"]:
+                    continue
+
+                numeric = pd.to_numeric(clinical[col], errors="coerce")
+                if numeric.notna().sum() >= 2:
+                    choices.append(str(col))
+
+    choices = list(dict.fromkeys(choices))
+    return (["None"] + choices) if include_none else choices
+
+
+def class_label_choices(aligned):
     if aligned is None:
-        return ["psa"]
+        return ["None"]
 
-    clinical = aligned.get("clinical_aligned")
-    summary = aligned.get("summary", {})
+    y = aligned.get("y")
+    if y is None or len(y) == 0:
+        return ["None"]
 
-    if clinical is None or clinical.empty:
-        return ["psa"]
+    values = [str(v) for v in pd.Series(y).dropna().astype(str).unique()]
+    return values or ["None"]
 
-    class_col = summary.get("class_col", "Class")
-    clinical_id_col = summary.get("clinical_id_col", "")
 
-    for col in clinical.columns:
-        if col in [class_col, clinical_id_col, "_match_key"]:
-            continue
+def resolve_variable_cutoff(
+    aligned,
+    variable_col,
+    use_median=True,
+    manual_cutoff=0.0,
+) -> float:
+    """Resolve a generic clinical-variable cutoff without disease assumptions."""
+    variable_col = _optional_variable_name(variable_col)
+    if variable_col is None or aligned is None:
+        return float(manual_cutoff)
 
-        numeric = pd.to_numeric(clinical[col], errors="coerce")
-        if numeric.notna().sum() >= 2:
-            choices.append(str(col))
+    clinical = aligned.get("clinical_aligned", pd.DataFrame())
+    if variable_col not in clinical.columns:
+        return float(manual_cutoff)
 
-    if prefer_psa:
-        for c in choices:
-            if c.lower() == "psa":
-                choices.remove(c)
-                choices.insert(0, c)
-                break
-        else:
-            for c in choices:
-                if "psa" in c.lower():
-                    choices.remove(c)
-                    choices.insert(0, c)
-                    break
+    values = pd.to_numeric(clinical[variable_col], errors="coerce")
+    if bool(use_median) and values.notna().any():
+        return float(values.median())
 
-    return choices or ["psa"]
+    return float(manual_cutoff)
 
 
 def stacked_fig(nrows=2):
@@ -1251,8 +1280,8 @@ def server(input, output, session):
                     ui.h4("Try NMRMetaboWizard with synthetic example data"),
                     ui.p(
                         "Download both files below. The NMR archive contains 16 "
-                        "fully synthetic Bruker-like FIDs (8 BPH-labelled and "
-                        "8 PCa-labelled samples), and the CSV contains matching "
+                        "fully synthetic Bruker-like FIDs (8 Class_A and "
+                        "8 Class_B samples), and the CSV contains matching "
                         "study_id and Class values. The files contain no patient data."
                     ),
                     ui.layout_columns(
@@ -1296,8 +1325,13 @@ def server(input, output, session):
         filtered_for_choices = filtered_state.get() if filtered_state.get() is not None else combined_for_choices
         eda_color_choices = clinical_variable_choices(combined_for_choices)
         eda2_color_choices = clinical_variable_choices(filtered_for_choices)
-        psa_column_choices = numeric_clinical_choices(combined_for_choices)
-        psa2_column_choices = numeric_clinical_choices(filtered_for_choices)
+        variable_column_choices = numeric_clinical_choices(combined_for_choices)
+        variable2_column_choices = numeric_clinical_choices(filtered_for_choices)
+        clinical_predictor_choices = numeric_clinical_choices(
+            filtered_for_choices,
+            include_none=False,
+        )
+        outcome_class_choices = class_label_choices(filtered_for_choices)
 
         if step == "raw":
             return ui.div(
@@ -1425,7 +1459,7 @@ def server(input, output, session):
             return ui.div(
                 ui.h2("Step 9 — Internal referencing", class_="step-title"),
                 ui.div("Search around the reference region and shift the ppm axis to the target ppm.", class_="note"),
-                ui.input_checkbox("use_reference", "Use reference peak", value=True),
+                ui.input_checkbox("use_reference", "Use reference peak", value=False),
                 ui.input_numeric("reference_ppm", "Target ppm", value=0.0),
                 ui.input_numeric("reference_search_min", "Search min ppm", value=-0.2),
                 ui.input_numeric("reference_search_max", "Search max ppm", value=0.2),
@@ -1443,8 +1477,8 @@ def server(input, output, session):
             return ui.div(
                 ui.h2("Step 10 — Baseline correction", class_="step-title"),
                 ui.div(
-                    "The baseline estimator excludes/interpolates the water region while estimating baseline. "
-                    "This avoids the water peak dragging the baseline.",
+                    "By default, the baseline is estimated from the full spectrum. "
+                    "Optionally exclude a custom interval from baseline estimation when a dominant solvent or artifact region distorts the fit.",
                     class_="note",
                 ),
                 ui.input_select("baseline_method", "Baseline method", choices=["als", "arpls", "airpls"], selected="als"),
@@ -1452,6 +1486,12 @@ def server(input, output, session):
                 ui.input_numeric("baseline_asymmetry", "ALS asymmetry p", value=0.01, min=0, max=1),
                 ui.input_numeric("baseline_iter", "Max iterations", value=12, min=1),
                 ui.input_numeric("baseline_max_points", "Fast baseline points", value=3000, min=500),
+                ui.input_checkbox("baseline_exclude_enabled", "Exclude a custom interval during baseline estimation", value=False),
+                ui.layout_columns(
+                    ui.input_numeric("baseline_exclude_min", "Exclusion min ppm", value=4.5),
+                    ui.input_numeric("baseline_exclude_max", "Exclusion max ppm", value=6.1),
+                    col_widths=[6, 6],
+                ),
                 ui.div("Baseline correction may take a while for high-resolution spectra or many samples.", class_="note"),
                 ui.input_action_button("apply_base", "Apply baseline correction", class_="btn-primary"),
                 ui.input_action_button("skip_base", "Skip baseline correction", class_="btn-primary"),
@@ -1469,7 +1509,7 @@ def server(input, output, session):
                 ui.div(
                     "This optional step applies a simple cross-correlation peak shift. "
                     "Keep it off unless you clearly see peak drift between samples. "
-                    "For urine data, avoid letting the water/urea region drive alignment.",
+                    "Choose an alignment interval that excludes dominant solvent or artifact peaks.",
                     class_="note",
                 ),
                 ui.input_checkbox("align_enabled", "Apply simple alignment", value=False),
@@ -1520,17 +1560,22 @@ def server(input, output, session):
             return ui.div(
                 ui.h2("Step 14 — Region removal", class_="step-title"),
                 ui.div(
-                    "Choose the ppm interval to remove before binning. "
-                    "For urine data, the default is 4.5–6.1 ppm.",
+                    "Region removal is optional and disabled by default. Select a preset only when it is appropriate for the sample type, or enter a custom interval.",
                     class_="note",
                 ),
+                ui.input_select(
+                    "region_preset",
+                    "Region preset",
+                    choices=["None", "Urine water/urea (4.5–6.1 ppm)", "Custom"],
+                    selected="None",
+                ),
                 ui.layout_columns(
-                    ui.input_numeric("region_min", "Region min ppm", value=4.5),
-                    ui.input_numeric("region_max", "Region max ppm", value=6.1),
+                    ui.input_numeric("region_min", "Custom min ppm", value=4.5),
+                    ui.input_numeric("region_max", "Custom max ppm", value=6.1),
                     col_widths=[6, 6],
                 ),
                 ui.input_select("region_mode", "Removal mode", choices=["zero", "interpolate"], selected="zero"),
-                ui.input_action_button("apply_region", "Apply region removal", class_="btn-primary"),
+                ui.input_action_button("apply_region", "Apply selected region setting", class_="btn-primary"),
                 ui.input_action_button("skip_region", "Skip region removal", class_="btn-primary"),
                 ui.hr(),
                 sample_and_ppm_controls(choices),
@@ -1627,8 +1672,8 @@ def server(input, output, session):
                 ui.h2("Step 18 — Exploratory data analysis", class_="step-title"),
                 ui.div(
                     "EDA uses X = normalized NMR bins and y = Class labels. "
-                    "You can calculate multiple PCA/PLS-DA components and choose any component combination for 2D or 3D score plots. "
-                    "The score-color menu is populated from the aligned clinical metadata, so users can color scores by Class, PSA, Gleason, age, or other available clinical variables.",
+                    "Score plots can be colored by any aligned clinical variable. "
+                    "Optional cutoff-based views use a user-selected numeric variable and are disabled when 'None' is selected.",
                     class_="note",
                 ),
                 ui.layout_columns(
@@ -1638,9 +1683,15 @@ def server(input, output, session):
                     col_widths=[4, 4, 4],
                 ),
                 ui.layout_columns(
-                    ui.input_select("eda_psa_column", "PSA column", choices=psa_column_choices, selected=psa_column_choices[0]),
-                    ui.input_numeric("eda_psa_cutoff", "PSA cutoff", value=4.0, min=0.0),
-                    col_widths=[6, 6],
+                    ui.input_select(
+                        "eda_variable_column",
+                        "Optional numeric clinical variable",
+                        choices=variable_column_choices,
+                        selected="None",
+                    ),
+                    ui.input_checkbox("eda_use_median_cutoff", "Use variable median as cutoff", value=True),
+                    ui.input_numeric("eda_variable_cutoff", "Manual cutoff", value=0.0),
+                    col_widths=[4, 4, 4],
                 ),
                 ui.div("EDA calculations may take a little while, especially PCA/PLS-DA with many bins.", class_="note"),
                 ui.input_action_button("apply_eda", "Run EDA", class_="btn-primary"),
@@ -1648,7 +1699,17 @@ def server(input, output, session):
                 ui.input_select(
                     "eda_plot_type",
                     "Plot",
-                    choices=["PCA scores", "PCA loadings", "PLS-DA scores", "Class counts", "Top univariate bins", "Clinical correlation heatmap", "PSA by Class", "Class by PSA group", "PSA-feature correlations"],
+                    choices=[
+                        "PCA scores",
+                        "PCA loadings",
+                        "PLS-DA scores",
+                        "Class counts",
+                        "Top univariate bins",
+                        "Clinical correlation heatmap",
+                        "Selected variable by Class",
+                        "Class by variable group",
+                        "Selected variable–NMR correlations",
+                    ],
                     selected="PCA scores",
                 ),
                 ui.layout_columns(
@@ -1730,8 +1791,7 @@ def server(input, output, session):
             return ui.div(
                 ui.h2("Step 20 — EDA after outlier removal", class_="step-title"),
                 ui.div(
-                    "Run the same EDA again after outlier removal. "
-                    "If no outliers were removed, this uses the original aligned dataset.",
+                    "Run the same EDA after the outlier decision. If no samples were removed, the original aligned dataset is used.",
                     class_="note",
                 ),
                 ui.layout_columns(
@@ -1741,9 +1801,15 @@ def server(input, output, session):
                     col_widths=[4, 4, 4],
                 ),
                 ui.layout_columns(
-                    ui.input_select("eda2_psa_column", "PSA column", choices=psa2_column_choices, selected=psa2_column_choices[0]),
-                    ui.input_numeric("eda2_psa_cutoff", "PSA cutoff", value=4.0, min=0.0),
-                    col_widths=[6, 6],
+                    ui.input_select(
+                        "eda2_variable_column",
+                        "Optional numeric clinical variable",
+                        choices=variable2_column_choices,
+                        selected="None",
+                    ),
+                    ui.input_checkbox("eda2_use_median_cutoff", "Use variable median as cutoff", value=True),
+                    ui.input_numeric("eda2_variable_cutoff", "Manual cutoff", value=0.0),
+                    col_widths=[4, 4, 4],
                 ),
                 ui.div("EDA after outlier removal may take a little while for large datasets.", class_="note"),
                 ui.input_action_button("apply_eda_filtered", "Run EDA after outlier removal", class_="btn-primary"),
@@ -1751,7 +1817,17 @@ def server(input, output, session):
                 ui.input_select(
                     "eda2_plot_type",
                     "Plot",
-                    choices=["PCA scores", "PCA loadings", "PLS-DA scores", "Class counts", "Top univariate bins", "Clinical correlation heatmap", "PSA by Class", "Class by PSA group", "PSA-feature correlations"],
+                    choices=[
+                        "PCA scores",
+                        "PCA loadings",
+                        "PLS-DA scores",
+                        "Class counts",
+                        "Top univariate bins",
+                        "Clinical correlation heatmap",
+                        "Selected variable by Class",
+                        "Class by variable group",
+                        "Selected variable–NMR correlations",
+                    ],
                     selected="PCA scores",
                 ),
                 ui.layout_columns(
@@ -1785,7 +1861,7 @@ def server(input, output, session):
             return ui.div(
                 ui.h2("Step 21 — Machine learning", class_="step-title"),
                 ui.div(
-                    "ML can use NMR bins only, clinical variables only, NMR + clinical variables, or PSA only. "
+                    "ML can use NMR bins, selected clinical predictors, both sources, or one selected numeric clinical variable. "
                     "Imputation, scaling, and optional PCA reduction are fitted inside the scikit-learn Pipeline.",
                     class_="good-note",
                 ),
@@ -1797,16 +1873,63 @@ def server(input, output, session):
                     col_widths=[3, 3, 3, 3],
                 ),
                 ui.layout_columns(
-                    ui.input_select("ml_feature_mode", "ML feature set", choices=["NMR only", "Clinical only", "NMR + clinical", "PSA only"], selected="NMR only"),
+                    ui.input_select(
+                        "ml_feature_mode",
+                        "ML feature set",
+                        choices=["NMR only", "Clinical only", "NMR + clinical", "Selected clinical variable only"],
+                        selected="NMR only",
+                    ),
                     ui.input_checkbox("ml_use_pca", "Use PCA reduction inside ML pipeline", value=False),
                     ui.input_numeric("ml_pca_components", "ML PCA components", value=10, min=2),
                     col_widths=[4, 4, 4],
                 ),
+                ui.input_select(
+                    "ml_clinical_predictors",
+                    "Clinical predictors for Clinical only / NMR + clinical",
+                    choices=clinical_predictor_choices if clinical_predictor_choices else ["No numeric variables"],
+                    selected=[],
+                    multiple=True,
+                ),
                 ui.layout_columns(
-                    ui.input_select("ml_psa_column", "PSA column", choices=psa2_column_choices, selected=psa2_column_choices[0]),
-                    ui.input_numeric("ml_psa_cutoff", "PSA cutoff", value=4.0, min=0.0),
-                    ui.input_select("ml_psa_subset", "PSA subset", choices=["All samples", "Low PSA (< cutoff)", "High PSA (>= cutoff)"], selected="All samples"),
+                    ui.input_select(
+                        "ml_variable_column",
+                        "Selected numeric clinical variable",
+                        choices=variable2_column_choices,
+                        selected="None",
+                    ),
+                    ui.input_checkbox("ml_use_median_cutoff", "Use variable median as cutoff", value=True),
+                    ui.input_numeric("ml_variable_cutoff", "Manual cutoff", value=0.0),
+                    ui.input_select(
+                        "ml_variable_subset",
+                        "Analysis subset",
+                        choices=["All samples", "Below cutoff", "At or above cutoff"],
+                        selected="All samples",
+                    ),
+                    col_widths=[3, 3, 3, 3],
+                ),
+                ui.layout_columns(
+                    ui.input_checkbox("ml_use_threshold_baseline", "Calculate threshold-rule baseline", value=False),
+                    ui.input_select(
+                        "ml_threshold_positive_class",
+                        "Positive class for threshold rule",
+                        choices=outcome_class_choices,
+                        selected=outcome_class_choices[0],
+                    ),
+                    ui.input_select(
+                        "ml_threshold_direction",
+                        "Threshold direction",
+                        choices=[
+                            "At or above cutoff predicts positive class",
+                            "Below cutoff predicts positive class",
+                        ],
+                        selected="At or above cutoff predicts positive class",
+                    ),
                     col_widths=[4, 4, 4],
+                ),
+                ui.div(
+                    "The threshold-rule baseline is optional, requires a binary outcome, and uses the explicitly selected positive class. "
+                    "Do not include diagnosis-derived or post-outcome variables as clinical predictors.",
+                    class_="note",
                 ),
                 ui.h4("ANN settings"),
                 ui.layout_columns(
@@ -1829,7 +1952,7 @@ def server(input, output, session):
                 ui.input_select(
                     "ml_plot_type",
                     "ML plot",
-                    choices=["Confusion matrix", "Feature importance", "ROC curve", "Predicted probabilities", "PSA baseline confusion matrix"],
+                    choices=["Confusion matrix", "Feature importance", "ROC curve", "Predicted probabilities", "Threshold-rule baseline confusion matrix"],
                     selected="Confusion matrix",
                 ),
                 output_widget("ml_plot"),
@@ -2226,6 +2349,13 @@ def server(input, output, session):
     def _apply_base():
         clear_error()
         try:
+            exclusion_text = ""
+            if bool(input.baseline_exclude_enabled()):
+                exclusion_text = (
+                    f"{float(input.baseline_exclude_min())}-"
+                    f"{float(input.baseline_exclude_max())}"
+                )
+
             samples_state.set(
                 apply_baseline_correction(
                     require_samples(),
@@ -2233,7 +2363,7 @@ def server(input, output, session):
                     smoothness=float(input.baseline_smoothness()),
                     asymmetry=float(input.baseline_asymmetry()),
                     max_iter=int(input.baseline_iter()),
-                    exclude_region_text="",
+                    exclude_region_text=exclusion_text,
                     max_points=int(input.baseline_max_points()),
                 )
             )
@@ -2395,17 +2525,40 @@ def server(input, output, session):
     def _apply_region():
         clear_error()
         try:
-            samples_state.set(
-                apply_region_removal(
-                    require_samples(),
-                    region_text=f"{float(input.region_min())}-{float(input.region_max())}",
-                    mode=input.region_mode(),
+            preset = str(input.region_preset())
+
+            if preset == "None":
+                out = []
+                for sample in require_samples():
+                    if "window_intensity" not in sample:
+                        raise ValueError("Apply or skip window selection first.")
+                    s = dict(sample)
+                    s["region_removed"] = s["window_intensity"].copy()
+                    s["region_text"] = ""
+                    s["region_mode"] = "none"
+                    s["log"] = s.get("log", []) + ["Region removal not applied."]
+                    out.append(s)
+                samples_state.set(out)
+                status_message = "Region removal not applied."
+            else:
+                if preset == "Urine water/urea (4.5–6.1 ppm)":
+                    region_text = "4.5-6.1"
+                else:
+                    region_text = f"{float(input.region_min())}-{float(input.region_max())}"
+
+                samples_state.set(
+                    apply_region_removal(
+                        require_samples(),
+                        region_text=region_text,
+                        mode=input.region_mode(),
+                    )
                 )
-            )
+                status_message = f"Region removal applied to {region_text} ppm."
+
             binned_state.set(None)
             normalized_state.set(None)
             reset_downstream_analysis()
-            status_state.set("Region removal applied.")
+            status_state.set(status_message)
         except Exception:
             set_error()
 
@@ -2601,10 +2754,18 @@ def server(input, output, session):
             if aligned is None:
                 raise ValueError("Align clinical data first.")
 
+            variable_col = _optional_variable_name(input.eda_variable_column())
+            variable_cutoff = resolve_variable_cutoff(
+                aligned,
+                variable_col,
+                use_median=bool(input.eda_use_median_cutoff()),
+                manual_cutoff=float(input.eda_variable_cutoff()),
+            )
+
             eda = {
                 "aligned": aligned,
-                "psa_col": input.eda_psa_column(),
-                "psa_cutoff": float(input.eda_psa_cutoff()),
+                "variable_col": variable_col,
+                "variable_cutoff": variable_cutoff,
                 "class_counts": class_counts(aligned),
                 "pca": pca_scores(aligned, n_components=int(input.pca_n_components())),
                 "plsda": plsda_scores(aligned, n_components=int(input.pls_n_components())),
@@ -2734,10 +2895,18 @@ def server(input, output, session):
             if aligned is None:
                 raise ValueError("Align clinical data first.")
 
+            variable_col = _optional_variable_name(input.eda2_variable_column())
+            variable_cutoff = resolve_variable_cutoff(
+                aligned,
+                variable_col,
+                use_median=bool(input.eda2_use_median_cutoff()),
+                manual_cutoff=float(input.eda2_variable_cutoff()),
+            )
+
             eda = {
                 "aligned": aligned,
-                "psa_col": input.eda2_psa_column(),
-                "psa_cutoff": float(input.eda2_psa_cutoff()),
+                "variable_col": variable_col,
+                "variable_cutoff": variable_cutoff,
                 "class_counts": class_counts(aligned),
                 "pca": pca_scores(aligned, n_components=int(input.pca2_n_components())),
                 "plsda": plsda_scores(aligned, n_components=int(input.pls2_n_components())),
@@ -2792,7 +2961,9 @@ def server(input, output, session):
             row["ui_use_cv"] = bool(input.ml_use_cv())
             row["ui_cv_folds"] = int(input.ml_cv_folds())
             row["ui_test_size"] = float(input.ml_test_size())
-            row["ui_psa_subset"] = input.ml_psa_subset()
+            row["ui_variable_subset"] = input.ml_variable_subset()
+            row["ui_selected_variable"] = input.ml_variable_column()
+            row["ui_threshold_baseline"] = bool(input.ml_use_threshold_baseline())
         except Exception:
             pass
 
@@ -2819,6 +2990,25 @@ def server(input, output, session):
             if aligned is None:
                 raise ValueError("Align clinical data first.")
 
+            selected_variable = _optional_variable_name(input.ml_variable_column())
+            variable_cutoff = resolve_variable_cutoff(
+                aligned,
+                selected_variable,
+                use_median=bool(input.ml_use_median_cutoff()),
+                manual_cutoff=float(input.ml_variable_cutoff()),
+            )
+
+            raw_predictors = input.ml_clinical_predictors() or []
+            if isinstance(raw_predictors, str):
+                selected_predictors = [raw_predictors]
+            else:
+                selected_predictors = list(raw_predictors)
+
+            selected_predictors = [
+                value for value in selected_predictors
+                if _optional_variable_name(value) is not None
+            ]
+
             result = train_ml_model(
                 aligned,
                 model_name=input.ml_model(),
@@ -2827,9 +3017,13 @@ def server(input, output, session):
                 use_pca=bool(input.ml_use_pca()),
                 pca_components=int(input.ml_pca_components()),
                 feature_mode=input.ml_feature_mode(),
-                psa_col=input.ml_psa_column(),
-                psa_cutoff=float(input.ml_psa_cutoff()),
-                psa_subset=input.ml_psa_subset(),
+                selected_variable_col=selected_variable,
+                variable_cutoff=variable_cutoff,
+                variable_subset=input.ml_variable_subset(),
+                clinical_predictors=selected_predictors,
+                use_threshold_baseline=bool(input.ml_use_threshold_baseline()),
+                threshold_positive_class=input.ml_threshold_positive_class(),
+                threshold_direction=input.ml_threshold_direction(),
                 ann_hidden_layers=input.ann_hidden_layers(),
                 ann_activation=input.ann_activation(),
                 ann_alpha=float(input.ann_alpha()),
@@ -3613,68 +3807,71 @@ def server(input, output, session):
         return col
 
     def _find_eda_column(columns, requested):
-        requested = str(requested or "").strip()
+        requested = _optional_variable_name(requested)
+        if requested is None:
+            return None
 
         if requested in columns:
             return requested
 
-        lower_map = {str(c).lower(): c for c in columns}
+        lower_map = {str(c).strip().lower(): c for c in columns}
+        return lower_map.get(requested.lower())
 
-        if requested.lower() in lower_map:
-            return lower_map[requested.lower()]
-
-        if requested.lower() == "psa":
-            for c in columns:
-                if str(c).lower() == "psa":
-                    return c
-            for c in columns:
-                if "psa" in str(c).lower():
-                    return c
-
-        return None
-
-    def _get_score_data_with_metadata(eda, plot_type, psa_col="psa", psa_cutoff=4.0):
+    def _get_score_data_with_metadata(
+        eda,
+        plot_type,
+        variable_col=None,
+        variable_cutoff=0.0,
+    ):
+        """Attach aligned metadata without many-to-many sample-ID expansion."""
         if plot_type == "PCA scores":
             scores = eda["pca"]["scores"].copy()
         else:
             scores = eda["plsda"]["scores"].copy()
 
+        scores["sample_id"] = scores["sample_id"].astype(str)
         aligned = eda.get("aligned")
 
         if aligned is not None:
-            clinical = aligned.get("clinical_aligned", pd.DataFrame()).copy()
-
+            clinical = aligned.get("clinical_aligned", pd.DataFrame())
             if clinical is not None and not clinical.empty:
                 clinical = clinical.copy()
                 clinical.index = clinical.index.astype(str)
 
-                scores["sample_id"] = scores["sample_id"].astype(str)
-                scores = scores.merge(
-                    clinical.reset_index().rename(columns={"index": "sample_id"}),
-                    on="sample_id",
-                    how="left",
-                    suffixes=("", "_clinical"),
-                )
+                if len(clinical) == len(scores):
+                    clinical_to_add = clinical.reset_index(drop=True).copy()
+                    clinical_to_add.index = scores.index
+                else:
+                    clinical_unique = clinical[~clinical.index.duplicated(keep="first")]
+                    clinical_to_add = clinical_unique.reindex(scores["sample_id"].values)
+                    clinical_to_add.index = scores.index
+
+                for col in clinical_to_add.columns:
+                    target = col if col not in scores.columns else f"{col}_clinical"
+                    scores[target] = clinical_to_add[col]
 
         scores["Class"] = scores["class"].astype(str)
+        variable_found = _find_eda_column(scores.columns, variable_col)
 
-        psa_found = _find_eda_column(scores.columns, psa_col)
-
-        if psa_found is not None:
-            psa_numeric = pd.to_numeric(scores[psa_found], errors="coerce")
-            scores["PSA value"] = psa_numeric
-            scores["PSA group"] = np.where(
-                psa_numeric < float(psa_cutoff),
-                f"PSA < {float(psa_cutoff):g}",
-                f"PSA ≥ {float(psa_cutoff):g}",
+        if variable_found is not None:
+            variable_numeric = pd.to_numeric(scores[variable_found], errors="coerce")
+            scores["Selected variable value"] = variable_numeric
+            scores["Variable group"] = np.where(
+                variable_numeric < float(variable_cutoff),
+                f"{variable_found} < {float(variable_cutoff):g}",
+                f"{variable_found} ≥ {float(variable_cutoff):g}",
             )
-            scores.loc[psa_numeric.isna(), "PSA group"] = "PSA missing"
+            scores.loc[variable_numeric.isna(), "Variable group"] = "Value missing"
         else:
-            scores["PSA value"] = np.nan
-            scores["PSA group"] = "PSA unavailable"
+            scores["Selected variable value"] = np.nan
+            scores["Variable group"] = "Not stratified"
 
-        scores["Class + PSA group"] = scores["Class"].astype(str) + " | " + scores["PSA group"].astype(str)
-
+        scores["Class + variable group"] = (
+            scores["Class"].astype(str)
+            + " | "
+            + scores["Variable group"].astype(str)
+        )
+        scores = scores.loc[:, ~pd.Index(scores.columns).duplicated()]
         return scores
 
     def _palette_sequence(name: str):
@@ -3702,8 +3899,8 @@ def server(input, output, session):
         color_by="Class",
         marker_size=8,
         palette="Plotly",
-        psa_col="psa",
-        psa_cutoff=4.0,
+        variable_col=None,
+        variable_cutoff=0.0,
     ):
         if plot_type == "PCA scores":
             base_scores = eda["pca"]["scores"]
@@ -3719,8 +3916,8 @@ def server(input, output, session):
         scores = _get_score_data_with_metadata(
             eda,
             plot_type,
-            psa_col=psa_col,
-            psa_cutoff=psa_cutoff,
+            variable_col=variable_col,
+            variable_cutoff=variable_cutoff,
         )
 
         x_col = f"{prefix}{int(x_component)}"
@@ -3738,7 +3935,7 @@ def server(input, output, session):
         fig = go.Figure()
 
         numeric_color = pd.to_numeric(scores[color_col], errors="coerce")
-        is_numeric_color = numeric_color.notna().sum() >= 3 and color_col not in ["Class", "class", "PSA group", "Class + PSA group"]
+        is_numeric_color = numeric_color.notna().sum() >= 3 and color_col not in ["Class", "class", "Variable group", "Class + variable group"]
 
         if dimension == "3D":
             if z_col not in scores.columns:
@@ -3863,89 +4060,104 @@ def server(input, output, session):
         )
         return _apply_global_plot_style(fig)
 
-    def _psa_column_and_values(eda, psa_col="psa"):
+    def _selected_variable_and_values(eda, variable_col=None):
         aligned = eda.get("aligned")
-
         if aligned is None:
             return None, pd.Series(dtype=float), pd.DataFrame()
 
         clinical = aligned.get("clinical_aligned", pd.DataFrame()).copy()
-
         if clinical is None or clinical.empty:
             return None, pd.Series(dtype=float), pd.DataFrame()
 
-        found = _find_eda_column(clinical.columns, psa_col)
-
+        found = _find_eda_column(clinical.columns, variable_col)
         if found is None:
             return None, pd.Series(dtype=float), clinical
 
         return found, pd.to_numeric(clinical[found], errors="coerce"), clinical
 
-    def _plot_psa_by_class(eda, psa_col="psa", psa_cutoff=4.0, title_suffix=""):
-        found, psa, clinical = _psa_column_and_values(eda, psa_col)
-
+    def _plot_variable_by_class(
+        eda,
+        variable_col=None,
+        variable_cutoff=0.0,
+        title_suffix="",
+    ):
+        found, values, _clinical = _selected_variable_and_values(eda, variable_col)
         if found is None:
-            return _blank_plotly("No PSA column found.")
+            return _blank_plotly("Select a numeric clinical variable first.")
 
         y = eda["aligned"]["y"]
         df = pd.DataFrame(
             {
                 "sample_id": y.index.astype(str),
                 "Class": y.values,
-                "PSA": psa.values,
+                "value": values.values,
             }
-        ).dropna(subset=["PSA"])
+        ).dropna(subset=["value"])
 
         if df.empty:
-            return _blank_plotly("No valid PSA values.")
+            return _blank_plotly("No valid values are available for the selected variable.")
 
         fig = go.Figure()
-
         for cls in df["Class"].astype(str).unique():
             sub = df[df["Class"].astype(str) == str(cls)]
             fig.add_trace(
                 go.Box(
-                    y=sub["PSA"],
+                    y=sub["value"],
                     x=sub["Class"],
                     name=str(cls),
                     boxpoints="all",
                     text=sub["sample_id"],
-                    hovertemplate="Sample: %{text}<br>Class: %{x}<br>PSA: %{y:.3f}<extra></extra>",
+                    hovertemplate=(
+                        "Sample: %{text}<br>Class: %{x}<br>"
+                        + f"{found}: "
+                        + "%{y:.4g}<extra></extra>"
+                    ),
                 )
             )
 
-        fig.add_hline(y=float(psa_cutoff), line_dash="dash", annotation_text=f"PSA cutoff {float(psa_cutoff):g}")
-        fig.update_layout(title=f"PSA by Class{title_suffix}", xaxis_title="Class", yaxis_title=found, height=680)
+        fig.add_hline(
+            y=float(variable_cutoff),
+            line_dash="dash",
+            annotation_text=f"Cutoff {float(variable_cutoff):g}",
+        )
+        fig.update_layout(
+            title=f"{found} by Class{title_suffix}",
+            xaxis_title="Class",
+            yaxis_title=found,
+            height=680,
+        )
         return _apply_global_plot_style(fig)
 
-    def _plot_class_by_psa_group(eda, psa_col="psa", psa_cutoff=4.0, title_suffix=""):
-        found, psa, clinical = _psa_column_and_values(eda, psa_col)
-
+    def _plot_class_by_variable_group(
+        eda,
+        variable_col=None,
+        variable_cutoff=0.0,
+        title_suffix="",
+    ):
+        found, values, _clinical = _selected_variable_and_values(eda, variable_col)
         if found is None:
-            return _blank_plotly("No PSA column found.")
+            return _blank_plotly("Select a numeric clinical variable first.")
 
         y = eda["aligned"]["y"]
-        df = pd.DataFrame(
-            {
-                "Class": y.values,
-                "PSA": psa.values,
-            }
-        ).dropna(subset=["PSA"])
-
+        df = pd.DataFrame({"Class": y.values, "value": values.values}).dropna(subset=["value"])
         if df.empty:
-            return _blank_plotly("No valid PSA values.")
+            return _blank_plotly("No valid values are available for the selected variable.")
 
-        df["PSA group"] = np.where(df["PSA"] < float(psa_cutoff), f"PSA < {float(psa_cutoff):g}", f"PSA ≥ {float(psa_cutoff):g}")
-        counts = df.groupby(["Class", "PSA group"], dropna=False).size().reset_index(name="count")
+        cutoff = float(variable_cutoff)
+        df["Variable group"] = np.where(
+            df["value"] < cutoff,
+            f"{found} < {cutoff:g}",
+            f"{found} ≥ {cutoff:g}",
+        )
+        counts = df.groupby(["Class", "Variable group"], dropna=False).size().reset_index(name="count")
 
         fig = go.Figure()
-
-        for group in counts["PSA group"].unique():
-            sub = counts[counts["PSA group"] == group]
+        for group in counts["Variable group"].unique():
+            sub = counts[counts["Variable group"] == group]
             fig.add_trace(go.Bar(x=sub["Class"].astype(str), y=sub["count"], name=str(group)))
 
         fig.update_layout(
-            title=f"Class counts by PSA group{title_suffix}",
+            title=f"Class counts by {found} group{title_suffix}",
             xaxis_title="Class",
             yaxis_title="Sample count",
             barmode="group",
@@ -3953,37 +4165,34 @@ def server(input, output, session):
         )
         return _apply_global_plot_style(fig)
 
-    def _plot_psa_feature_correlations(eda, psa_col="psa", title_suffix=""):
+    def _plot_variable_feature_correlations(eda, variable_col=None, title_suffix=""):
         table = eda.get("feature_clinical_corr", pd.DataFrame())
-
         if table is None or table.empty or "clinical_variable" not in table.columns:
-            return _blank_plotly("No clinical-feature correlations available.")
+            return _blank_plotly("No clinical-feature correlations are available.")
 
-        found = _find_eda_column(table["clinical_variable"].astype(str).unique(), psa_col)
-
+        found = _find_eda_column(table["clinical_variable"].astype(str).unique(), variable_col)
         if found is None:
-            matches = table[table["clinical_variable"].astype(str).str.lower().str.contains("psa", na=False)]
-        else:
-            matches = table[table["clinical_variable"].astype(str).str.lower() == str(found).lower()]
+            return _blank_plotly("Select a numeric clinical variable first.")
 
+        matches = table[
+            table["clinical_variable"].astype(str).str.lower() == str(found).lower()
+        ]
         if matches.empty:
-            return _blank_plotly("No PSA-feature correlations found.")
+            return _blank_plotly("No NMR correlations were found for the selected variable.")
 
         matches = matches.sort_values("abs_rho", ascending=False).head(30)
-
         fig = go.Figure(
             data=[
                 go.Bar(
                     x=matches["spearman_rho"],
                     y=matches["feature_ppm"].astype(str),
                     orientation="h",
-                    text=matches["feature_ppm"].astype(str),
                     hovertemplate="ppm: %{y}<br>Spearman rho: %{x:.3f}<extra></extra>",
                 )
             ]
         )
         fig.update_layout(
-            title=f"Top PSA-feature Spearman correlations{title_suffix}",
+            title=f"Top {found}–NMR Spearman correlations{title_suffix}",
             xaxis_title="Spearman rho",
             yaxis_title="ppm bin",
             height=650,
@@ -4136,8 +4345,8 @@ def server(input, output, session):
                 color_by=input.score_color_by(),
                 marker_size=input.score_marker_size(),
                 palette=input.score_palette(),
-                psa_col=input.eda_psa_column(),
-                psa_cutoff=float(input.eda_psa_cutoff()),
+                variable_col=eda.get("variable_col"),
+                variable_cutoff=float(eda.get("variable_cutoff", 0.0)),
             )
 
         if plot_type == "PCA loadings":
@@ -4204,24 +4413,24 @@ def server(input, output, session):
             fig.update_layout(title="Spearman correlation among clinical variables", height=650)
             return _apply_global_plot_style(fig)
 
-        if plot_type == "PSA by Class":
-            return _plot_psa_by_class(
+        if plot_type == "Selected variable by Class":
+            return _plot_variable_by_class(
                 eda,
-                psa_col=input.eda_psa_column(),
-                psa_cutoff=float(input.eda_psa_cutoff()),
+                variable_col=eda.get("variable_col"),
+                variable_cutoff=float(eda.get("variable_cutoff", 0.0)),
             )
 
-        if plot_type == "Class by PSA group":
-            return _plot_class_by_psa_group(
+        if plot_type == "Class by variable group":
+            return _plot_class_by_variable_group(
                 eda,
-                psa_col=input.eda_psa_column(),
-                psa_cutoff=float(input.eda_psa_cutoff()),
+                variable_col=eda.get("variable_col"),
+                variable_cutoff=float(eda.get("variable_cutoff", 0.0)),
             )
 
-        if plot_type == "PSA-feature correlations":
-            return _plot_psa_feature_correlations(
+        if plot_type == "Selected variable–NMR correlations":
+            return _plot_variable_feature_correlations(
                 eda,
-                psa_col=input.eda_psa_column(),
+                variable_col=eda.get("variable_col"),
             )
 
         return _blank_plotly("Unknown EDA plot")
@@ -4375,12 +4584,12 @@ def server(input, output, session):
             )
             return _apply_global_plot_style(fig)
 
-        if plot_type == "PSA baseline confusion matrix":
-            psa = ml.get("psa_baseline", {})
-            cm = psa.get("confusion_matrix") if isinstance(psa, dict) else None
+        if plot_type == "Threshold-rule baseline confusion matrix":
+            baseline = ml.get("threshold_baseline", {})
+            cm = baseline.get("confusion_matrix") if isinstance(baseline, dict) else None
 
             if cm is None or getattr(cm, "empty", True):
-                note = psa.get("note", "No PSA baseline confusion matrix available.") if isinstance(psa, dict) else "No PSA baseline confusion matrix available."
+                note = baseline.get("note", "No threshold-rule confusion matrix available.") if isinstance(baseline, dict) else "No threshold-rule confusion matrix available."
                 return _blank_plotly(note)
 
             fig = go.Figure(
@@ -4396,7 +4605,7 @@ def server(input, output, session):
                 ]
             )
             fig.update_layout(
-                title=f"PSA cutoff baseline confusion matrix (cutoff {psa.get('psa_cutoff', '')})",
+                title=f"Threshold-rule baseline confusion matrix (cutoff {baseline.get('cutoff', '')})",
                 xaxis_title="Predicted",
                 yaxis_title="True",
                 height=620,
@@ -4433,11 +4642,11 @@ def server(input, output, session):
                 return pd.DataFrame({"message": ["No probability data available."]})
             return probs.copy()
 
-        if plot_type == "PSA baseline confusion matrix":
-            psa = ml.get("psa_baseline", {})
-            cm = psa.get("confusion_matrix") if isinstance(psa, dict) else None
+        if plot_type == "Threshold-rule baseline confusion matrix":
+            baseline = ml.get("threshold_baseline", {})
+            cm = baseline.get("confusion_matrix") if isinstance(baseline, dict) else None
             if cm is None or cm.empty:
-                return pd.DataFrame({"message": ["No PSA baseline confusion matrix available."]})
+                return pd.DataFrame({"message": ["No threshold-rule confusion matrix available."]})
             return cm.reset_index().melt(id_vars="index", var_name="predicted_class", value_name="count").rename(columns={"index": "true_class"})
 
         return pd.DataFrame({"message": [f"No data export available for ML plot: {plot_type}"]})
@@ -4723,8 +4932,8 @@ def server(input, output, session):
                 color_by=input.score2_color_by(),
                 marker_size=input.score2_marker_size(),
                 palette=input.score2_palette(),
-                psa_col=input.eda2_psa_column(),
-                psa_cutoff=float(input.eda2_psa_cutoff()),
+                variable_col=eda.get("variable_col"),
+                variable_cutoff=float(eda.get("variable_cutoff", 0.0)),
             )
 
         if plot_type == "PCA loadings":
@@ -4776,26 +4985,26 @@ def server(input, output, session):
             fig.update_layout(title="Clinical correlation heatmap after outlier step", height=650)
             return _apply_global_plot_style(fig)
 
-        if plot_type == "PSA by Class":
-            return _plot_psa_by_class(
+        if plot_type == "Selected variable by Class":
+            return _plot_variable_by_class(
                 eda,
-                psa_col=input.eda2_psa_column(),
-                psa_cutoff=float(input.eda2_psa_cutoff()),
+                variable_col=eda.get("variable_col"),
+                variable_cutoff=float(eda.get("variable_cutoff", 0.0)),
                 title_suffix=" after outlier step",
             )
 
-        if plot_type == "Class by PSA group":
-            return _plot_class_by_psa_group(
+        if plot_type == "Class by variable group":
+            return _plot_class_by_variable_group(
                 eda,
-                psa_col=input.eda2_psa_column(),
-                psa_cutoff=float(input.eda2_psa_cutoff()),
+                variable_col=eda.get("variable_col"),
+                variable_cutoff=float(eda.get("variable_cutoff", 0.0)),
                 title_suffix=" after outlier step",
             )
 
-        if plot_type == "PSA-feature correlations":
-            return _plot_psa_feature_correlations(
+        if plot_type == "Selected variable–NMR correlations":
+            return _plot_variable_feature_correlations(
                 eda,
-                psa_col=input.eda2_psa_column(),
+                variable_col=eda.get("variable_col"),
                 title_suffix=" after outlier step",
             )
 
@@ -4845,13 +5054,13 @@ def server(input, output, session):
                 return pd.DataFrame({"message": ["No clinical correlation matrix available."]})
             return corr.reset_index().melt(id_vars="index", var_name="variable_2", value_name="spearman_rho").rename(columns={"index": "variable_1"})
 
-        if plot_type == "PSA-feature correlations":
+        if plot_type == "Selected variable–NMR correlations":
             table = eda.get("feature_clinical_corr", pd.DataFrame()).copy()
             if table.empty:
-                return pd.DataFrame({"message": ["No PSA-feature correlation table available."]})
+                return pd.DataFrame({"message": ["No selected-variable correlation table available."]})
             return table
 
-        # For PSA by Class / Class by PSA group, the data are embedded in the aligned clinical metadata.
+        # For selected-variable plots, data are embedded in the aligned clinical metadata.
         aligned = combined_state.get()
         if aligned is None:
             aligned = filtered_state.get()
