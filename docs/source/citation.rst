@@ -10,7 +10,7 @@ Primary citation
 If you use **NMRMetaboWizard** in your research, please cite the associated
 application paper:
 
-    Parastoo Vahdatiyekta*, Alex Dickens, Tarja Lamminen, Mikael Högerman, Peter J Boström, Tan-Phat Huynh* ([2026]).
+    Parastoo Vahdatiyekta*, Alex Dickens, Tarja Lamminen, Mikael Högerman, Peter J Boström, Pekka Taimen, Tan-Phat Huynh* ([2026]).
     
 *NMRMetaboWizard: An Interactive Tool for 1^H-NMR Untargeted Metabolomics with Application to Prostate Cancer and Benign Prostatic Hyperplasia*
     **[Journal name]**, [volume(issue)], [pages or article number].
