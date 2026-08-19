@@ -4,6 +4,8 @@ import traceback
 import re
 import io
 import zipfile
+import gc
+import time
 
 import numpy as np
 import pandas as pd
@@ -29,6 +31,7 @@ from nmr_pipeline import (
     apply_peak_alignment,
     apply_negative_values_zeroing,
     apply_window_selection,
+    compact_samples_for_downstream,
     apply_region_removal,
     apply_binning,
     apply_normalization,
@@ -56,6 +59,10 @@ DEMO_SW_H = 7200.0
 DEMO_O1 = 2820.0
 DEMO_SFO1 = 600.13
 DEMO_N_POINTS = 4096
+
+# Large cohorts retain several gigabytes of full-resolution intermediate
+# arrays. Before region removal/binning, switch to a compact representation.
+LARGE_COHORT_THRESHOLD = 200
 
 
 def _demo_sample_rows() -> list[dict]:
@@ -1544,6 +1551,10 @@ def server(input, output, session):
             return ui.div(
                 ui.h2("Step 13 — Window selection", class_="step-title"),
                 ui.div("Select the spectral window to keep for downstream analysis. Default: 0.2–10 ppm.", class_="note"),
+                ui.div(
+                    "Large-cohort protection: for 200 or more samples, moving to the next step releases older full-resolution intermediate arrays to prevent an out-of-memory server disconnect. Downstream numerical results are unchanged, but earlier preprocessing plots are no longer retained in memory. Download any required QC plots before continuing.",
+                    class_="good-note",
+                ),
                 ui.input_numeric("window_min", "Window min ppm", value=0.2),
                 ui.input_numeric("window_max", "Window max ppm", value=10.0),
                 ui.input_action_button("apply_window", "Apply window selection", class_="btn-primary"),
@@ -1560,7 +1571,7 @@ def server(input, output, session):
             return ui.div(
                 ui.h2("Step 14 — Region removal", class_="step-title"),
                 ui.div(
-                    "Region removal is optional and disabled by default. Select a preset only when it is appropriate for the sample type, or enter a custom interval.",
+                    "Region removal is optional and disabled by default. Select a preset only when it is appropriate for the sample type, or enter a custom interval. For large cohorts, the app uses memory-efficient storage at this stage.",
                     class_="note",
                 ),
                 ui.input_select(
@@ -1596,7 +1607,7 @@ def server(input, output, session):
                     col_widths=[6, 6],
                 ),
                 ui.input_select("bin_method", "Integration method", choices=["trapezoidal", "rectangular"], selected="trapezoidal"),
-                ui.div("Creating the binned table may take a little while for many samples or very small bin widths.", class_="note"),
+                ui.div("Binning is vectorized and a progress indicator will be shown. Hundreds of samples can still take some time, but the browser should remain connected.", class_="note"),
                 ui.input_action_button("apply_bin", "Create binned table", class_="btn-primary"),
                 ui.hr(),
                 sample_and_ppm_controls(choices),
@@ -2464,6 +2475,13 @@ def server(input, output, session):
     @reactive.effect
     @reactive.event(input.back_neg)
     def _back_neg():
+        samples = samples_state.get()
+        if samples and bool(samples[0].get("memory_compacted", False)):
+            status_state.set(
+                "Earlier full-resolution preprocessing steps were released by large-cohort memory mode. "
+                "Restart preprocessing if those steps must be changed."
+            )
+            return
         current_step.set("neg")
 
     @reactive.effect
@@ -2495,8 +2513,9 @@ def server(input, output, session):
                 s = dict(sample)
                 ppm = s["referenced_ppm"]
                 y = s["negative_zeroed"]
-                s["window_ppm"] = ppm.copy()
-                s["window_intensity"] = y.copy()
+                # No new full-size copy is needed when the full range is retained.
+                s["window_ppm"] = ppm
+                s["window_intensity"] = y
                 s["window_range"] = (float(np.nanmin(ppm)), float(np.nanmax(ppm)))
                 s["log"] = s.get("log", []) + ["Window selection skipped; full ppm range kept."]
                 out.append(s)
@@ -2510,10 +2529,27 @@ def server(input, output, session):
     @reactive.event(input.go_region)
     def _go_region():
         samples = samples_state.get()
-        if samples and "window_intensity" in samples[0]:
-            current_step.set("region")
-        else:
+        if not samples or "window_intensity" not in samples[0]:
             status_state.set("Click 'Apply window selection' first.")
+            return
+
+        if (
+            len(samples) >= LARGE_COHORT_THRESHOLD
+            and not bool(samples[0].get("memory_compacted", False))
+        ):
+            n_samples = len(samples)
+            compacted = compact_samples_for_downstream(samples)
+            samples_state.set(compacted)
+            # Release the previous dictionaries/arrays before the next step
+            # allocates a region-processed array.
+            del samples
+            gc.collect()
+            status_state.set(
+                f"Large-cohort memory mode enabled for {n_samples} samples. "
+                "Older preprocessing arrays were released; downstream data were preserved."
+            )
+
+        current_step.set("region")
 
     @reactive.effect
     @reactive.event(input.back_window)
@@ -2533,7 +2569,7 @@ def server(input, output, session):
                     if "window_intensity" not in sample:
                         raise ValueError("Apply or skip window selection first.")
                     s = dict(sample)
-                    s["region_removed"] = s["window_intensity"].copy()
+                    s["region_removed"] = s["window_intensity"]
                     s["region_text"] = ""
                     s["region_mode"] = "none"
                     s["log"] = s.get("log", []) + ["Region removal not applied."]
@@ -2572,7 +2608,7 @@ def server(input, output, session):
                 if "window_intensity" not in sample:
                     raise ValueError("Apply or skip window selection first.")
                 s = dict(sample)
-                s["region_removed"] = s["window_intensity"].copy()
+                s["region_removed"] = s["window_intensity"]
                 s["region_text"] = ""
                 s["region_mode"] = "none"
                 s["log"] = s.get("log", []) + ["Region removal skipped."]
@@ -2602,13 +2638,32 @@ def server(input, output, session):
     def _apply_bin():
         clear_error()
         try:
+            samples = require_samples()
             n_bins = int(input.bin_n_bins()) if input.bin_definition() == "Number of bins" else None
-            new_samples, binned = apply_binning(
-                require_samples(),
-                bin_width=float(input.bin_width()),
-                method=input.bin_method(),
-                n_bins=n_bins,
-            )
+            started = time.perf_counter()
+
+            with ui.Progress(min=0, max=max(1, len(samples))) as progress:
+                progress.set(
+                    0,
+                    message="Creating binned table",
+                    detail=f"0 of {len(samples)} spectra processed",
+                )
+
+                def update_progress(done, total):
+                    progress.set(
+                        done,
+                        message="Creating binned table",
+                        detail=f"{done} of {total} spectra processed",
+                    )
+
+                new_samples, binned = apply_binning(
+                    samples,
+                    bin_width=float(input.bin_width()),
+                    method=input.bin_method(),
+                    n_bins=n_bins,
+                    progress_callback=update_progress,
+                )
+
             samples_state.set(new_samples)
             binned_state.set(binned)
             normalized_state.set(None)
@@ -2619,7 +2674,10 @@ def server(input, output, session):
             filtered_state.set(None)
             eda_filtered_state.set(None)
             ml_state.set(None)
-            status_state.set("Binned table created.")
+            elapsed = time.perf_counter() - started
+            status_state.set(
+                f"Binned table created for {len(samples)} samples in {elapsed:.1f} seconds."
+            )
         except Exception:
             set_error()
 
@@ -3119,7 +3177,11 @@ def server(input, output, session):
                 {
                     "index": i,
                     "name": sample["name"],
-                    "fid_points": len(sample["raw_fid"]),
+                    "fid_points": (
+                        len(sample["raw_fid"])
+                        if "raw_fid" in sample
+                        else int(sample.get("raw_fid_points", 0))
+                    ),
                     "folder": sample["folder"],
                 }
             )
@@ -3137,6 +3199,16 @@ def server(input, output, session):
 
         i = get_sample_index(input, samples)
         sample = samples[i]
+
+        if (
+            bool(sample.get("memory_compacted", False))
+            and step_number(step) < step_number("window")
+        ):
+            return _blank_plotly_global(
+                "Large-cohort memory mode released earlier full-resolution preprocessing arrays. "
+                "The window, region-removal, binning, normalization, EDA, and ML data remain available. "
+                "Restart preprocessing to regenerate an earlier plot."
+            )
 
         try:
             if step == "raw":

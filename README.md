@@ -168,6 +168,16 @@ Only synthetic or appropriately de-identified data should be used with a public 
 - Synthetic demonstration data are generated deterministically from a fixed random seed.
 - The threshold-rule benchmark requires an explicitly selected variable, cutoff, direction, and positive class.
 
+
+## Large cohorts
+
+For cohorts with 200 or more spectra, the app automatically switches to a
+memory-efficient representation when moving from window selection to region
+removal. This preserves all data required for region removal, binning,
+normalization, EDA, and machine learning while releasing older full-resolution
+intermediate arrays. Inspect or download earlier preprocessing plots before
+continuing. Binning is vectorized and displays progress for large datasets.
+
 ## Testing
 
 Run the main smoke test:

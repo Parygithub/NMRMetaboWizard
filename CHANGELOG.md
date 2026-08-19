@@ -4,6 +4,10 @@ All notable changes to NMRMetaboWizard are documented here.
 
 ## [Unreleased]
 
+- Added large-cohort memory compaction before region removal and binning.
+- Replaced per-bin Boolean-mask integration with vectorized equivalent binning.
+- Added a binning progress indicator and large-cohort regression tests.
+
 - Replaced PSA-specific EDA and ML controls with optional generic numeric clinical-variable controls.
 - Added median or manual cutoffs for selected clinical variables.
 - Added disease-neutral variable-by-class, cutoff-group, and variable-to-NMR correlation plots.

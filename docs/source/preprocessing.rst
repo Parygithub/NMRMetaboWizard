@@ -127,3 +127,16 @@ Binning partitions each processed spectrum into chemical-shift intervals
 defined by a fixed width or a total bin count. Signals are integrated using
 the trapezoidal or rectangular method. PQN, total-area normalization, SNV, or
 no normalization can then be applied.
+Large-cohort memory handling
+----------------------------
+
+For cohorts containing 200 or more spectra, NMRMetaboWizard automatically
+releases obsolete full-resolution arrays when the user moves from window
+selection to region removal. The arrays required for region removal, binning,
+normalization, EDA, and machine learning are preserved unchanged. Earlier
+preprocessing plots are no longer retained after this transition, so required
+quality-control plots should be inspected or downloaded first.
+
+Binning uses a vectorized implementation that assigns spectral points and
+trapezoidal segments to bins once, rather than constructing a full-length mask
+for every bin. A progress indicator reports the number of processed spectra.
