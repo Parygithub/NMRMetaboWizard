@@ -917,19 +917,77 @@ def apply_window_selection(samples: list[dict], ppm_min: float = 0.2, ppm_max: f
     return out
 
 
-def _remove_region(ppm: np.ndarray, y: np.ndarray, region_text: str, mode: str = "zero") -> np.ndarray:
-    out = y.copy()
+def compact_samples_for_downstream(samples: list[dict]) -> list[dict]:
+    """Release obsolete large arrays before region removal and binning.
 
+    NMRMetaboWizard normally keeps arrays from every preprocessing step so that
+    users can revisit earlier plots. For several hundred high-resolution
+    spectra this can consume multiple gigabytes of RAM. This helper retains the
+    metadata and the arrays required from window selection onward while
+    releasing older FID/spectrum intermediates.
+
+    The numerical data used for region removal, binning, normalization, EDA,
+    and machine learning are preserved unchanged.
+    """
+    keep_keys = {
+        "name",
+        "sample_id",
+        "experiment_folder_name",
+        "folder",
+        "acqus",
+        "log",
+        "referenced_ppm",
+        "negative_zeroed",
+        "window_ppm",
+        "window_intensity",
+        "window_range",
+        "region_removed",
+        "region_text",
+        "region_mode",
+        "bin_edges",
+        "bin_centers",
+        "binned_values",
+        "alignment_shift_points",
+    }
+
+    out = []
+
+    for sample in samples:
+        compact = {
+            key: value
+            for key, value in sample.items()
+            if key in keep_keys
+        }
+
+        raw_fid = sample.get("raw_fid")
+        if raw_fid is not None:
+            compact["raw_fid_points"] = int(len(raw_fid))
+        else:
+            compact["raw_fid_points"] = int(sample.get("raw_fid_points", 0))
+
+        compact["memory_compacted"] = True
+        compact["log"] = compact.get("log", []) + [
+            "Large-cohort memory mode: released obsolete full-resolution preprocessing arrays before region removal/binning."
+        ]
+        out.append(compact)
+
+    return out
+
+
+def _remove_region(ppm: np.ndarray, y: np.ndarray, region_text: str, mode: str = "zero") -> np.ndarray:
+    # When no region is requested, return the existing array rather than making
+    # a second full copy for every sample.
     if region_text.strip() == "":
-        return out
+        return y
 
     low, high = parse_region_text(region_text)
     mask = (ppm >= low) & (ppm <= high)
 
     if not np.any(mask):
-        return out
+        return y
 
     if mode == "zero":
+        out = y.copy()
         out[mask] = 0.0
         return out
 
@@ -955,32 +1013,87 @@ def apply_region_removal(samples: list[dict], region_text: str = "", mode: str =
 
         s["region_removed"] = rr
         s["region_text"] = region_text
-        s["region_mode"] = mode
-        s["log"] = s.get("log", []) + [f"Region removal: region={region_text}, mode={mode}."]
+        s["region_mode"] = mode if region_text.strip() else "none"
+        s["log"] = s.get("log", []) + [
+            f"Region removal: region={region_text or 'none'}, mode={s['region_mode']}."
+        ]
         out.append(s)
 
     return out
 
 
 def _integrate_bins(ppm: np.ndarray, intensity: np.ndarray, edges: np.ndarray, method: str = "trapezoidal") -> np.ndarray:
+    """Integrate all bins in one vectorized pass.
+
+    The previous implementation created a full-length Boolean mask for every
+    bin. With hundreds of samples and approximately 1,000 bins this required
+    billions of comparisons and could make the Shiny worker appear to
+    disconnect. The vectorized implementation assigns points/segments to bins
+    once and uses ``numpy.bincount``.
+    """
+    ppm = np.asarray(ppm, dtype=float)
+    intensity = np.asarray(intensity, dtype=float)
+    edges = np.asarray(edges, dtype=float)
+
+    finite = np.isfinite(ppm) & np.isfinite(intensity)
+    ppm = ppm[finite]
+    intensity = intensity[finite]
+
+    n_bins = max(0, len(edges) - 1)
+    if n_bins == 0 or ppm.size < 2:
+        return np.zeros(n_bins, dtype=float)
+
     order = np.argsort(ppm)
     ppm = ppm[order]
     intensity = intensity[order]
 
-    values = []
+    point_bins = np.searchsorted(edges, ppm, side="right") - 1
+    valid_points = (point_bins >= 0) & (point_bins < n_bins)
+    counts = np.bincount(
+        point_bins[valid_points],
+        minlength=n_bins,
+    ).astype(int, copy=False)
 
-    for left, right in zip(edges[:-1], edges[1:]):
-        mask = (ppm >= left) & (ppm < right)
+    if method == "rectangular":
+        sums = np.bincount(
+            point_bins[valid_points],
+            weights=intensity[valid_points],
+            minlength=n_bins,
+        )
+        means = np.divide(
+            sums,
+            counts,
+            out=np.zeros(n_bins, dtype=float),
+            where=counts > 0,
+        )
+        values = means * np.diff(edges)
+        values[counts < 2] = 0.0
+        return values
 
-        if np.sum(mask) < 2:
-            values.append(0.0)
-        elif method == "rectangular":
-            width = right - left
-            values.append(float(np.mean(intensity[mask]) * width))
-        else:
-            values.append(float(np.trapezoid(intensity[mask], ppm[mask])))
+    if method != "trapezoidal":
+        raise ValueError("Binning method must be 'trapezoidal' or 'rectangular'.")
 
-    return np.array(values)
+    # A trapezoid contributes only when both adjacent points belong to the same
+    # bin. This reproduces np.trapezoid(intensity[mask], ppm[mask]) for each bin
+    # without constructing one mask per bin.
+    dx = np.diff(ppm)
+    segment_bins = point_bins[:-1]
+    valid_segments = (
+        valid_points[:-1]
+        & valid_points[1:]
+        & (point_bins[:-1] == point_bins[1:])
+        & np.isfinite(dx)
+    )
+    segment_areas = 0.5 * (intensity[:-1] + intensity[1:]) * dx
+
+    values = np.bincount(
+        segment_bins[valid_segments],
+        weights=segment_areas[valid_segments],
+        minlength=n_bins,
+    )
+    values = np.asarray(values, dtype=float)
+    values[counts < 2] = 0.0
+    return values
 
 
 def apply_binning(
@@ -988,6 +1101,7 @@ def apply_binning(
     bin_width: float = 0.01,
     method: str = "trapezoidal",
     n_bins: int | None = None,
+    progress_callback=None,
 ) -> tuple[list[dict], pd.DataFrame]:
     if not samples:
         raise ValueError("No samples available.")
@@ -996,9 +1110,9 @@ def apply_binning(
         if "region_removed" not in sample:
             raise ValueError("Region removal must be applied before binning.")
 
-    all_ppm = np.concatenate([s["window_ppm"] for s in samples])
-    ppm_min = float(np.min(all_ppm))
-    ppm_max = float(np.max(all_ppm))
+    # Avoid concatenating every ppm axis into one very large temporary array.
+    ppm_min = min(float(np.nanmin(s["window_ppm"])) for s in samples)
+    ppm_max = max(float(np.nanmax(s["window_ppm"])) for s in samples)
 
     if n_bins is not None and int(n_bins) > 0:
         n_bins = int(n_bins)
@@ -1012,25 +1126,48 @@ def apply_binning(
         bin_description = f"width={bin_width:g} ppm"
 
     centers = (edges[:-1] + edges[1:]) / 2
-
+    column_names = [f"{x:.4f}" for x in centers]
+    matrix = np.empty((len(samples), len(centers)), dtype=float)
+    sample_names = []
     out = []
-    rows = []
 
-    for sample in samples:
+    update_every = max(1, len(samples) // 100)
+
+    for sample_i, sample in enumerate(samples):
         s = dict(sample)
-        values = _integrate_bins(s["window_ppm"], s["region_removed"], edges, method=method)
+        values = _integrate_bins(
+            s["window_ppm"],
+            s["region_removed"],
+            edges,
+            method=method,
+        )
 
+        matrix[sample_i, :] = values
+        sample_names.append(s["name"])
+
+        # The edge/center arrays are shared immutable objects, not copied per
+        # sample. The per-sample binned vector is small compared with spectra.
         s["bin_edges"] = edges
         s["bin_centers"] = centers
         s["binned_values"] = values
-        s["log"] = s.get("log", []) + [f"Binning: {bin_description}, method={method}."]
-
-        rows.append(
-            pd.Series(values, index=[f"{x:.4f}" for x in centers], name=s["name"])
-        )
+        s["log"] = s.get("log", []) + [
+            f"Binning: {bin_description}, method={method}."
+        ]
         out.append(s)
 
-    return out, pd.DataFrame(rows)
+        if progress_callback is not None and (
+            sample_i == 0
+            or sample_i == len(samples) - 1
+            or (sample_i + 1) % update_every == 0
+        ):
+            progress_callback(sample_i + 1, len(samples))
+
+    table = pd.DataFrame(
+        matrix,
+        index=sample_names,
+        columns=column_names,
+    )
+    return out, table
 
 
 def normalize_table(df: pd.DataFrame, method: str = "PQN") -> pd.DataFrame:
