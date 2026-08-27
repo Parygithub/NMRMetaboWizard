@@ -311,7 +311,10 @@ def pca_scores(aligned: dict, n_components: int = 5) -> dict:
 
     Xs, prep = _impute_scale_X(X)
 
-    pca = PCA(n_components=n_components)
+    pca = PCA(
+    n_components=n_components,
+    svd_solver="full",
+)
     scores = pca.fit_transform(Xs)
 
     score_df = pd.DataFrame(
@@ -462,7 +465,10 @@ def detect_pca_outliers(
     n_components = min(n_components, max(1, X.shape[0] - 1))
 
     Xs, _prep = _impute_scale_X(X)
-    pca = PCA(n_components=n_components)
+    pca = PCA(
+    n_components=n_components,
+    svd_solver="full",
+)
     scores = pca.fit_transform(Xs)
 
     score_df = pd.DataFrame(scores, index=X.index, columns=[f"PC{i+1}" for i in range(n_components)])
@@ -1171,7 +1177,16 @@ def _make_ml_pipeline(
         max_allowed = pca_components
         if n_samples is not None and n_features is not None:
             max_allowed = min(int(pca_components), max(1, int(n_samples) - 1), int(n_features))
-        steps.append(("pca", PCA(n_components=max_allowed)))
+        steps.append(
+    (
+        "pca",
+        PCA(
+            n_components=max_allowed,
+            svd_solver="randomized",
+            random_state=random_state,
+        ),
+    )
+)
 
     steps.append((
         "classifier",
