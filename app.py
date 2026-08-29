@@ -4031,7 +4031,7 @@ def server(input, output, session):
         if prefix == "PC":
             row = variance[variance["component"] == col]
             if len(row) == 1 and "explained_variance_percent" in row.columns:
-                return f"{col} ({row['explained_variance_percent'].iloc[0]:.1f}%)"
+                return f"{col} ({row['approx_x_variance_percent'].iloc[0]:.1f}% X variance)"
             return col
 
         row = variance[variance["component"] == col]
@@ -5099,7 +5099,7 @@ def server(input, output, session):
             def label(col):
                 row = variance[variance["component"] == col]
                 if len(row) == 1:
-                    return f"{col} (approx X var {row['approx_x_variance_percent'].iloc[0]:.1f}%)"
+                    return f"{col} ({row['approx_x_variance_percent'].iloc[0]:.1f}% X variance)"
                 return col
 
             title_base = "PLS-DA scores"
