@@ -353,6 +353,7 @@ PLOT_STYLE = {
     "legend_size": 13,
     "width": 950,
     "height": 0,
+    "background_color": "#ffffff",
 }
 
 
@@ -369,47 +370,144 @@ def _safe_str(value, default):
         return value if value else default
     except Exception:
         return default
+def _safe_hex_color(value, default="#ffffff"):
+    """Return a valid hexadecimal colour, otherwise use the default."""
+    try:
+        value = str(value).strip()
+    except Exception:
+        return default
+
+    # Accept six-digit hexadecimal colours, such as #ffffff.
+    if re.fullmatch(r"#[0-9a-fA-F]{6}", value):
+        return value.lower()
+
+    # Also accept short hexadecimal colours, such as #fff.
+    if re.fullmatch(r"#[0-9a-fA-F]{3}", value):
+        expanded = "".join(character * 2 for character in value[1:])
+        return f"#{expanded.lower()}"
+
+    return default
+
+
+def _is_dark_hex_color(value):
+    """Determine whether black or white text will contrast better."""
+    color = _safe_hex_color(value, "#ffffff")
+
+    red = int(color[1:3], 16)
+    green = int(color[3:5], 16)
+    blue = int(color[5:7], 16)
+
+    luminance = (
+        0.2126 * red
+        + 0.7152 * green
+        + 0.0722 * blue
+    ) / 255.0
+
+    return luminance < 0.50
 
 
 def _update_plot_style_from_input(input):
     """Read plot appearance controls and store them in PLOT_STYLE."""
     try:
-        PLOT_STYLE["font_family"] = _safe_str(input.plot_font_family(), "Arial")
-        PLOT_STYLE["font_size"] = _safe_int(input.plot_font_size(), 14)
-        PLOT_STYLE["title_size"] = _safe_int(input.plot_title_size(), 18)
-        PLOT_STYLE["axis_title_size"] = _safe_int(input.plot_axis_title_size(), 15)
-        PLOT_STYLE["tick_size"] = _safe_int(input.plot_tick_size(), 13)
-        PLOT_STYLE["legend_size"] = _safe_int(input.plot_legend_size(), 13)
-        PLOT_STYLE["width"] = _safe_int(input.plot_width(), 950)
-        PLOT_STYLE["height"] = _safe_int(input.plot_height(), 0)
+        PLOT_STYLE["font_family"] = _safe_str(
+            input.plot_font_family(),
+            "Arial",
+        )
+        PLOT_STYLE["font_size"] = _safe_int(
+            input.plot_font_size(),
+            14,
+        )
+        PLOT_STYLE["title_size"] = _safe_int(
+            input.plot_title_size(),
+            18,
+        )
+        PLOT_STYLE["axis_title_size"] = _safe_int(
+            input.plot_axis_title_size(),
+            15,
+        )
+        PLOT_STYLE["tick_size"] = _safe_int(
+            input.plot_tick_size(),
+            13,
+        )
+        PLOT_STYLE["legend_size"] = _safe_int(
+            input.plot_legend_size(),
+            13,
+        )
+        PLOT_STYLE["width"] = _safe_int(
+            input.plot_width(),
+            950,
+        )
+        PLOT_STYLE["height"] = _safe_int(
+            input.plot_height(),
+            0,
+        )
+        PLOT_STYLE["background_color"] = _safe_hex_color(
+            input.plot_background_color(),
+            "#ffffff",
+        )
     except Exception:
         pass
 
 
 def _apply_global_plot_style(fig):
-    """Apply global plot font, tick, legend and size settings to a Plotly figure."""
+    """Apply user-selected appearance settings to a Plotly figure."""
     if fig is None:
         return fig
 
+    background_color = _safe_hex_color(
+        PLOT_STYLE.get("background_color", "#ffffff"),
+        "#ffffff",
+    )
+
+    dark_background = _is_dark_hex_color(background_color)
+
+    if dark_background:
+        text_color = "#ffffff"
+        grid_color = "rgba(255,255,255,0.24)"
+        zero_line_color = "rgba(255,255,255,0.48)"
+    else:
+        text_color = "#1b2430"
+        grid_color = "rgba(70,80,90,0.20)"
+        zero_line_color = "rgba(70,80,90,0.42)"
+
+    axis_title_font = dict(
+        family=PLOT_STYLE.get("font_family", "Arial"),
+        size=PLOT_STYLE.get("axis_title_size", 15),
+        color=text_color,
+    )
+
+    tick_font = dict(
+        family=PLOT_STYLE.get("font_family", "Arial"),
+        size=PLOT_STYLE.get("tick_size", 13),
+        color=text_color,
+    )
+
     layout_updates = dict(
+        paper_bgcolor=background_color,
+        plot_bgcolor=background_color,
         font=dict(
             family=PLOT_STYLE.get("font_family", "Arial"),
             size=PLOT_STYLE.get("font_size", 14),
+            color=text_color,
         ),
         title=dict(
             font=dict(
                 family=PLOT_STYLE.get("font_family", "Arial"),
                 size=PLOT_STYLE.get("title_size", 18),
+                color=text_color,
             )
         ),
         legend=dict(
+            bgcolor="rgba(0,0,0,0)",
             font=dict(
                 family=PLOT_STYLE.get("font_family", "Arial"),
                 size=PLOT_STYLE.get("legend_size", 13),
+                color=text_color,
             ),
             title_font=dict(
                 family=PLOT_STYLE.get("font_family", "Arial"),
                 size=PLOT_STYLE.get("legend_size", 13),
+                color=text_color,
             ),
         ),
         margin=dict(l=80, r=40, t=80, b=70),
@@ -423,25 +521,56 @@ def _apply_global_plot_style(fig):
 
     fig.update_layout(**layout_updates)
 
-    axis_title_font = dict(
-        family=PLOT_STYLE.get("font_family", "Arial"),
-        size=PLOT_STYLE.get("axis_title_size", 15),
-    )
-    tick_font = dict(
-        family=PLOT_STYLE.get("font_family", "Arial"),
-        size=PLOT_STYLE.get("tick_size", 13),
+    fig.update_xaxes(
+        title_font=axis_title_font,
+        tickfont=tick_font,
+        showgrid=True,
+        gridcolor=grid_color,
+        zeroline=True,
+        zerolinecolor=zero_line_color,
+        linecolor=text_color,
+        tickcolor=text_color,
     )
 
-    fig.update_xaxes(title_font=axis_title_font, tickfont=tick_font)
-    fig.update_yaxes(title_font=axis_title_font, tickfont=tick_font)
+    fig.update_yaxes(
+        title_font=axis_title_font,
+        tickfont=tick_font,
+        showgrid=True,
+        gridcolor=grid_color,
+        zeroline=True,
+        zerolinecolor=zero_line_color,
+        linecolor=text_color,
+        tickcolor=text_color,
+    )
 
-    # Plotly subplot titles are stored as annotations. Update them too,
-    # so cohort-specific outlier subplots follow the global appearance controls.
+    # Apply the selected background to 3D PCA and PLS-DA plots.
+    scene_axis_style = dict(
+        showbackground=True,
+        backgroundcolor=background_color,
+        gridcolor=grid_color,
+        zerolinecolor=zero_line_color,
+        linecolor=text_color,
+        tickfont=tick_font,
+        title=dict(font=axis_title_font),
+    )
+
+    try:
+        fig.update_scenes(
+            bgcolor=background_color,
+            xaxis=dict(scene_axis_style),
+            yaxis=dict(scene_axis_style),
+            zaxis=dict(scene_axis_style),
+        )
+    except Exception:
+        pass
+
+    # Plotly subplot titles are stored as annotations.
     try:
         fig.update_annotations(
             font=dict(
                 family=PLOT_STYLE.get("font_family", "Arial"),
                 size=PLOT_STYLE.get("title_size", 18),
+                color=text_color,
             )
         )
     except Exception:
@@ -1150,11 +1279,43 @@ app_ui = ui.page_fluid(
     ui.div(
         ui.h4("Plot appearance"),
         ui.layout_columns(
-            ui.input_select("plot_font_family", "Font", choices=["Arial", "Calibri", "DejaVu Sans", "Times New Roman"], selected="Arial"),
-            ui.input_numeric("plot_width", "Plot width px (0 = auto)", value=950, min=0),
-            ui.input_numeric("plot_height", "Plot height px (0 = auto)", value=0, min=0),
-            col_widths=[4, 4, 4],
-        ),
+            ui.input_select(
+        "plot_font_family",
+        "Font",
+        choices=[
+            "Arial",
+            "Calibri",
+            "DejaVu Sans",
+            "Times New Roman",
+        ],
+        selected="Arial",
+    ),
+    ui.input_numeric(
+        "plot_width",
+        "Plot width px (0 = auto)",
+        value=950,
+        min=0,
+    ),
+    ui.input_numeric(
+        "plot_height",
+        "Plot height px (0 = auto)",
+        value=0,
+        min=0,
+    ),
+    ui.input_text(
+        "plot_background_color",
+        "Plot background color",
+        value="#ffffff",
+        placeholder="#ffffff",
+    ),
+    col_widths=[3, 3, 3, 3],
+),
+
+ui.p(
+    "Enter a hexadecimal color, for example #ffffff for white, "
+    "#f2f2f2 for light grey, or #000000 for black.",
+    style="font-size:13px; color:#58677a; margin-top:4px;",
+),
         ui.layout_columns(
             ui.input_numeric("plot_title_size", "Title size", value=18, min=8),
             ui.input_numeric("plot_axis_title_size", "Axis-label size", value=15, min=8),
