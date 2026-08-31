@@ -4028,15 +4028,19 @@ def server(input, output, session):
         return _apply_global_plot_style(fig)
 
     def _score_axis_label(prefix: str, col: str, variance: pd.DataFrame):
-        if prefix == "PC":
-            row = variance[variance["component"] == col]
-            if len(row) == 1 and "explained_variance_percent" in row.columns:
-                return f"{col} ({row['approx_x_variance_percent'].iloc[0]:.1f}% X variance)"
+        row = variance[variance["component"] == col]
+
+        if len(row) != 1:
             return col
 
-        row = variance[variance["component"] == col]
-        if len(row) == 1 and "approx_x_variance_percent" in row.columns:
-            return f"{col} (approx X var {row['approx_x_variance_percent'].iloc[0]:.1f}%)"
+        if prefix == "PC" and "explained_variance_percent" in row.columns:
+            value = float(row["explained_variance_percent"].iloc[0])
+            return f"{col} ({value:.1f}% variance)"
+
+        if prefix == "LV" and "approx_x_variance_percent" in row.columns:
+            value = float(row["approx_x_variance_percent"].iloc[0])
+            return f"{col} ({value:.1f}% X variance)"
+
         return col
 
     def _find_eda_column(columns, requested):
